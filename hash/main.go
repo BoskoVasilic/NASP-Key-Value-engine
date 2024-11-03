@@ -1,4 +1,4 @@
-package hash
+package hash_with_seed
 
 var functions = []func(string) int{
 	hash1,
