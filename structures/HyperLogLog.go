@@ -74,3 +74,34 @@ func (hll *HLL) emptyCount() int {
 	}
 	return sum
 }
+
+func (h *HLL) Serialize() []byte {
+	data := make([]byte, 1+8+len(h.reg)) // 1 byte for p, 8 bytes for m, rest for registers
+	data[0] = h.p                        // Store p
+	mBytes := make([]byte, 8)
+	for i := 0; i < 8; i++ {
+		mBytes[i] = byte(h.m >> (56 - 8*i)) // Store m
+	}
+	copy(data[1:9], mBytes)
+	copy(data[9:], h.reg) // Store registers
+	return data
+}
+
+func Deserialize(data []byte) *HLL {
+	if len(data) < 9 {
+		return nil // Invalid data
+	}
+
+	p := data[0] // Extract p
+	m := uint64(0)
+	for i := 0; i < 8; i++ {
+		m = (m << 8) | uint64(data[i+1]) // Read m
+	}
+
+	registers := data[9:] // Extract registers
+	return &HLL{
+		m:   m,
+		p:   p,
+		reg: append([]uint8(nil), registers...), // Copy registers
+	}
+}
