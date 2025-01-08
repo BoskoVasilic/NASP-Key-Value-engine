@@ -24,4 +24,6 @@ func main() {
 	fmt.Println(filter2.Check([]byte("World")))
 	fmt.Println(filter2.Check([]byte("Hello, World!")))
 	fmt.Println(data2)
+
+	structures.TestSimHashAndHemmingwayDistance()
 }
