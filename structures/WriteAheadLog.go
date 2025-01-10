@@ -24,6 +24,8 @@ const (
 	KEY_SIZE_START   = TOMBSTONE_START + TOMBSTONE_SIZE
 	VALUE_SIZE_START = KEY_SIZE_START + KEY_SIZE_SIZE
 	KEY_START        = VALUE_SIZE_START + VALUE_SIZE_SIZE
+
+	SEGMENT_SIZE = BLOCK_SIZE * 4 // user specified number of blocks in a segment get from config file
 )
 
 type WriteAheadLogElement struct {
@@ -38,6 +40,16 @@ type WriteAheadLogElement struct {
 
 type WriteAheadLog struct {
 	elements []byte
+}
+
+type WriteAheadLogSegment struct {
+	index    int
+	elements []WriteAheadLogElement
+}
+
+type WriteAheadLogPaths struct {
+	segmentPath string
+	offset      int
 }
 
 func NewWriteAheadLogElement(keySize uint64, valueSize uint64, key []byte, value []byte) *WriteAheadLogElement {
@@ -66,7 +78,7 @@ func (w *WriteAheadLog) AddElement(element *WriteAheadLogElement) {
 }
 
 func openWriteAheadLogFile(openFlag int) *os.File {
-	file, err := os.OpenFile("wal/writeAheadLog.bin", openFlag|os.O_CREATE, 0666)
+	file, err := os.OpenFile("wal/writeAheadLog.log", openFlag|os.O_CREATE, 0666)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -131,9 +143,14 @@ func (w *WriteAheadLog) ReadFromFile() {
 	fmt.Println(keySize)
 	fmt.Println(valueSize)
 
-	element := Deserialize(data[0:elementSize])
-	fmt.Println(element)
-
+	validCheck := CRC32(data[TIMESTAMP_START:elementSize]) == binary.LittleEndian.Uint32(data[CRC_START:CRC_SIZE])
+	if !validCheck {
+		log.Fatal("CRC32 checksum failed")
+	} else {
+		element := Deserialize(data[0:elementSize])
+		fmt.Println(element)
+		w.AddElement(element)
+	}
 	fmt.Println("Data length: ", len(data))
 
 	var i int = int(elementSize)
@@ -162,9 +179,14 @@ func (w *WriteAheadLog) ReadFromFile() {
 		fmt.Println(keySize)
 		fmt.Println(valueSize)
 
-		element := Deserialize(data[i : i+int(elementSize)])
-		w.AddElement(element)
-		fmt.Println(element)
+		validCheck = CRC32(data[i+TIMESTAMP_START:i+int(elementSize)]) == binary.LittleEndian.Uint32(data[i+CRC_START:i+CRC_SIZE])
+		if !validCheck {
+			log.Fatal("CRC32 checksum failed")
+		} else {
+			element := Deserialize(data[i : i+int(elementSize)])
+			w.AddElement(element)
+			fmt.Println(element)
+		}
 
 		i += int(elementSize)
 	}
