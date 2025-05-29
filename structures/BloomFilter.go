@@ -1,7 +1,7 @@
 package structures
 
 import (
-	hahs "KVengine/hash"
+	"KVengine/hash"
 	utils "KVengine/utils"
 	"fmt"
 )
@@ -10,10 +10,10 @@ type BloomFilter struct {
 	NumberOfFunctions uint32
 	MainLen           uint32
 	ArrayMain         []byte
-	HashFunc          []hahs.HashWithSeed
+	HashFunc          []hash.HashWithSeed
 }
 
-func NewBloomFilter(numberOfFunctions, mainLen uint32, hashFuncs []hahs.HashWithSeed) *BloomFilter {
+func NewBloomFilter(numberOfFunctions, mainLen uint32, hashFuncs []hash.HashWithSeed) *BloomFilter {
 	return &BloomFilter{
 		NumberOfFunctions: numberOfFunctions,
 		MainLen:           mainLen,
@@ -31,7 +31,7 @@ func NewBloomFilterWithParams(ExpectedElements int, falsePositiveRate float64) *
 		m = (m/8 + 1) * 8
 	}
 	k := utils.CalculateK(ExpectedElements, m)
-	hashFuncs := hahs.CreateHashFunctions(uint32(k))
+	hashFuncs := hash.CreateHashFunctions(uint32(k))
 	return &BloomFilter{
 		NumberOfFunctions: uint32(k),
 		MainLen:           uint32(m),
@@ -75,9 +75,9 @@ func (b *BloomFilter) Serialize() []byte {
 func DeSerialize(data []byte) *BloomFilter {
 	NumberOfFunctions := utils.BytesToUint32(data[:4])
 	MainLen := utils.BytesToUint32(data[4:8])
-	hashFuncs := make([]hahs.HashWithSeed, NumberOfFunctions)
+	hashFuncs := make([]hash.HashWithSeed, NumberOfFunctions)
 	for i := 0; i < int(NumberOfFunctions); i++ {
-		hashFuncs[i] = hahs.HashWithSeed{Seed: data[8+i*4 : 12+i*4]}
+		hashFuncs[i] = hash.HashWithSeed{Seed: data[8+i*4 : 12+i*4]}
 	}
 	ArrayMain := data[4+4+NumberOfFunctions*4:]
 	return &BloomFilter{
