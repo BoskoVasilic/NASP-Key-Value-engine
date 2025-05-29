@@ -75,7 +75,7 @@ func (hll *HLL) emptyCount() int {
 	return sum
 }
 
-func (h *HLL) Serialize() []byte {
+func (h *HLL) SerializeHLL() []byte {
 	data := make([]byte, 1+8+len(h.reg)) // 1 byte for p, 8 bytes for m, rest for registers
 	data[0] = h.p                        // Store p
 	mBytes := make([]byte, 8)
@@ -87,7 +87,7 @@ func (h *HLL) Serialize() []byte {
 	return data
 }
 
-func Deserialize(data []byte) *HLL {
+func DeserializeHLL(data []byte) *HLL {
 	if len(data) < 9 {
 		return nil // Invalid data
 	}

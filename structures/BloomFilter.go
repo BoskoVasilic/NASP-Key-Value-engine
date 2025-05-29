@@ -59,7 +59,7 @@ func (b *BloomFilter) Check(data []byte) bool {
 	}
 	return true
 }
-func (b *BloomFilter) Serialize() []byte {
+func (b *BloomFilter) SerializeBloomF() []byte {
 	listOfBytes := make([]byte, 0)
 	NumberOfFunctionsBytes := utils.Uint32ToBytes(b.NumberOfFunctions)
 	listOfBytes = append(listOfBytes, NumberOfFunctionsBytes...)
@@ -72,7 +72,7 @@ func (b *BloomFilter) Serialize() []byte {
 
 	return listOfBytes
 }
-func DeSerialize(data []byte) *BloomFilter {
+func DeserializeBloomF(data []byte) *BloomFilter {
 	NumberOfFunctions := utils.BytesToUint32(data[:4])
 	MainLen := utils.BytesToUint32(data[4:8])
 	hashFuncs := make([]hash.HashWithSeed, NumberOfFunctions)
