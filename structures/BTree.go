@@ -5,23 +5,20 @@ import (
 	"strings"
 )
 
-// BTreeNode represents a single node in the B-Tree
+// Entry represents a key–value pair.
+type Entry struct {
+	Key   string
+	Value []byte
+}
+
+// BTreeNode holds sorted entries.
 type BTreeNode struct {
-	Values   []uint32
+	Entries  []Entry
 	Children []*BTreeNode
 	Parent   *BTreeNode
 }
 
-// Create a new free-standing BTreeNode with a single value
-func NewFreeBTreeNode(value uint32) *BTreeNode {
-	return &BTreeNode{
-		Values:   []uint32{value},
-		Children: []*BTreeNode{},
-		Parent:   nil,
-	}
-}
-
-// BTree represents the B-Tree
+// BTree represents the B-Tree.
 type BTree struct {
 	Root   *BTreeNode
 	Size   uint32
@@ -29,191 +26,154 @@ type BTree struct {
 	Order  uint8
 }
 
-// Create a new BTree with a specified order
+// NewBTree creates a B-Tree of given order.
 func NewBTree(order uint8) *BTree {
-	return &BTree{
-		Root:   nil,
-		Size:   0,
-		Height: 0,
-		Order:  order,
-	}
+	return &BTree{Order: order}
 }
 
-// Put inserts a new value into the BTree
-func (bTree *BTree) Put(value uint32) {
-	if bTree.Root == nil {
-		bTree.Root = NewFreeBTreeNode(value)
-		bTree.Height = 1
-		bTree.Size++
+// Put inserts or updates a key–value pair.
+func (b *BTree) Put(key string, value []byte) {
+	if b.Root == nil {
+		b.Root = &BTreeNode{
+			Entries: []Entry{{Key: key, Value: value}},
+		}
+		b.Height = 1
+		b.Size++
 	} else {
-		insertNode(bTree, bTree.Root, value)
+		insertEntry(b, b.Root, Entry{Key: key, Value: value})
 	}
 }
 
-// Get searches for a value in the BTree
-func (bTree *BTree) Get(value uint32) (bool, *BTreeNode) {
-	current := bTree.Root
-	for current != nil {
-		for i, v := range current.Values {
-			if value == v {
-				return true, current
-			} else if value < v {
-				if len(current.Children) > 0 {
-					current = current.Children[i]
-					goto CONTINUE
+// Get returns the value for a key.
+func (b *BTree) Get(key string) ([]byte, bool) {
+	node := b.Root
+	for node != nil {
+		for i, e := range node.Entries {
+			if key == e.Key {
+				return e.Value, true
+			} else if key < e.Key {
+				if len(node.Children) > 0 {
+					node = node.Children[i]
+					goto NEXT
 				}
-				return false, nil
+				return nil, false
 			}
 		}
-		// Check rightmost child
-		if len(current.Children) > 0 {
-			current = current.Children[len(current.Children)-1]
+		if len(node.Children) > 0 {
+			node = node.Children[len(node.Children)-1]
 		} else {
-			return false, nil
+			return nil, false
 		}
-	CONTINUE:
+	NEXT:
 	}
-	return false, nil
+	return nil, false
 }
 
-// Delete removes a value from the BTree
-func (bTree *BTree) Delete(value uint32) {
-	if bTree.Root == nil {
+// Delete removes a key from the B-Tree.
+func (b *BTree) Delete(key string) {
+	if b.Root == nil {
 		return
 	}
-	deleteNode(bTree, bTree.Root, value)
-
-	// Adjust root if needed
-	if len(bTree.Root.Values) == 0 && len(bTree.Root.Children) > 0 {
-		bTree.Root = bTree.Root.Children[0]
-		bTree.Root.Parent = nil
-		bTree.Height--
+	deleteEntry(b, b.Root, key)
+	if len(b.Root.Entries) == 0 && len(b.Root.Children) > 0 {
+		b.Root = b.Root.Children[0]
+		b.Root.Parent = nil
+		b.Height--
 	}
-	if len(bTree.Root.Values) == 0 && len(bTree.Root.Children) == 0 {
-		bTree.Root = nil
-		bTree.Height = 0
+	if len(b.Root.Entries) == 0 && len(b.Root.Children) == 0 {
+		b.Root = nil
+		b.Height = 0
 	}
 }
 
-// ---------- Internal insertion logic ----------
+// ---------------- internal helpers -------------------
 
-func insertNode(bTree *BTree, currentNode *BTreeNode, value uint32) {
-	if len(currentNode.Children) == 0 {
-		currentNode.Values = insertIntoSortedArray(currentNode.Values, value)
-		if len(currentNode.Values) >= int(bTree.Order) {
-			splitNode(bTree, currentNode)
-		}
-		bTree.Size++
-		return
-	}
-	for i, v := range currentNode.Values {
-		if value < v {
-			insertNode(bTree, currentNode.Children[i], value)
+func insertEntry(b *BTree, node *BTreeNode, entry Entry) {
+	// Leaf
+	if len(node.Children) == 0 {
+		idx := findInsertIndex(node.Entries, entry.Key)
+		if idx < len(node.Entries) && node.Entries[idx].Key == entry.Key {
+			node.Entries[idx].Value = entry.Value
 			return
 		}
+		node.Entries = insertEntryAt(node.Entries, idx, entry)
+		if len(node.Entries) >= int(b.Order) {
+			splitNode(b, node)
+		}
+		b.Size++
+		return
 	}
-	insertNode(bTree, currentNode.Children[len(currentNode.Children)-1], value)
+	// Internal
+	idx := findInsertIndex(node.Entries, entry.Key)
+	if idx < len(node.Entries) && node.Entries[idx].Key == entry.Key {
+		node.Entries[idx].Value = entry.Value
+		return
+	}
+	insertEntry(b, node.Children[idx], entry)
 }
 
-func splitNode(bTree *BTree, node *BTreeNode) {
-	midIndex := len(node.Values) / 2
-	midValue := node.Values[midIndex]
+func splitNode(b *BTree, node *BTreeNode) {
+	mid := len(node.Entries) / 2
+	midEntry := node.Entries[mid]
 
-	leftNode := &BTreeNode{
-		Values: node.Values[:midIndex],
-		Parent: node.Parent,
+	left := &BTreeNode{
+		Entries: append([]Entry(nil), node.Entries[:mid]...),
+		Parent:  node.Parent,
 	}
-	rightNode := &BTreeNode{
-		Values: node.Values[midIndex+1:],
-		Parent: node.Parent,
+	right := &BTreeNode{
+		Entries: append([]Entry(nil), node.Entries[mid+1:]...),
+		Parent:  node.Parent,
 	}
 
 	if len(node.Children) > 0 {
-		leftNode.Children = make([]*BTreeNode, len(node.Children[:midIndex+1]))
-		copy(leftNode.Children, node.Children[:midIndex+1])
-		rightNode.Children = make([]*BTreeNode, len(node.Children[midIndex+1:]))
-		copy(rightNode.Children, node.Children[midIndex+1:])
-		for _, child := range leftNode.Children {
-			if child != nil {
-				child.Parent = leftNode
-			}
+		left.Children = append([]*BTreeNode(nil), node.Children[:mid+1]...)
+		right.Children = append([]*BTreeNode(nil), node.Children[mid+1:]...)
+		for _, c := range left.Children {
+			c.Parent = left
 		}
-		for _, child := range rightNode.Children {
-			if child != nil {
-				child.Parent = rightNode
-			}
+		for _, c := range right.Children {
+			c.Parent = right
 		}
 	}
 
 	if node.Parent == nil {
-		newRoot := &BTreeNode{
-			Values:   []uint32{midValue},
-			Children: []*BTreeNode{leftNode, rightNode},
+		b.Root = &BTreeNode{
+			Entries:  []Entry{midEntry},
+			Children: []*BTreeNode{left, right},
 		}
-		leftNode.Parent = newRoot
-		rightNode.Parent = newRoot
-		bTree.Root = newRoot
-		bTree.Height++
+		left.Parent = b.Root
+		right.Parent = b.Root
+		b.Height++
 	} else {
 		parent := node.Parent
-		parent.Values = insertIntoSortedArray(parent.Values, midValue)
-		parent.Children = replaceChild(parent.Children, node, leftNode, rightNode)
-		if len(parent.Values) >= int(bTree.Order) {
-			splitNode(bTree, parent)
+		idx := findInsertIndex(parent.Entries, midEntry.Key)
+		parent.Entries = insertEntryAt(parent.Entries, idx, midEntry)
+		parent.Children = replaceChild(parent.Children, node, left, right)
+		if len(parent.Entries) >= int(b.Order) {
+			splitNode(b, parent)
 		}
 	}
 }
 
-func insertIntoSortedArray(arr []uint32, value uint32) []uint32 {
-	for i, v := range arr {
-		if value < v {
-			return append(arr[:i], append([]uint32{value}, arr[i:]...)...)
-		}
-	}
-	return append(arr, value)
-}
-
-func replaceChild(children []*BTreeNode, oldNode, leftNode, rightNode *BTreeNode) []*BTreeNode {
-	newChildren := []*BTreeNode{}
-	for _, child := range children {
-		if child == oldNode {
-			newChildren = append(newChildren, leftNode, rightNode)
-		} else {
-			newChildren = append(newChildren, child)
-		}
-	}
-	return newChildren
-}
-
-// ---------- Internal deletion logic ----------
-
-func deleteNode(bTree *BTree, node *BTreeNode, value uint32) {
-	idx := indexOf(node.Values, value)
-
-	if idx != -1 {
+func deleteEntry(b *BTree, node *BTreeNode, key string) {
+	idx := findInsertIndex(node.Entries, key)
+	if idx < len(node.Entries) && node.Entries[idx].Key == key {
 		if len(node.Children) == 0 {
-			node.Values = append(node.Values[:idx], node.Values[idx+1:]...)
-			fixUnderflow(bTree, node)
+			node.Entries = append(node.Entries[:idx], node.Entries[idx+1:]...)
+			fixUnderflow(b, node)
 		} else {
-			predecessor := findPredecessor(node, idx)
-			node.Values[idx] = predecessor
-			deleteNode(bTree, node.Children[idx], predecessor)
+			pre := findPredecessorEntry(node, idx)
+			node.Entries[idx] = pre
+			deleteEntry(b, node.Children[idx], pre.Key)
 		}
-	} else {
-		if len(node.Children) == 0 {
-			return
-		}
-		childIdx := 0
-		for childIdx < len(node.Values) && value > node.Values[childIdx] {
-			childIdx++
-		}
-		deleteNode(bTree, node.Children[childIdx], value)
+	} else if len(node.Children) > 0 {
+		deleteEntry(b, node.Children[idx], key)
 	}
 }
 
-func fixUnderflow(bTree *BTree, node *BTreeNode) {
-	minKeys := int(bTree.Order)/2 - 1
-	if node == bTree.Root || len(node.Values) >= minKeys {
+func fixUnderflow(b *BTree, node *BTreeNode) {
+	minKeys := int(b.Order)/2 - 1
+	if node == b.Root || len(node.Entries) >= minKeys {
 		return
 	}
 
@@ -224,25 +184,111 @@ func fixUnderflow(bTree *BTree, node *BTreeNode) {
 
 	idx := childIndex(parent, node)
 
-	if idx > 0 && len(parent.Children[idx-1].Values) > minKeys {
+	if idx > 0 && len(parent.Children[idx-1].Entries) > minKeys {
 		borrowFromLeft(parent, idx)
-	} else if idx < len(parent.Children)-1 && len(parent.Children[idx+1].Values) > minKeys {
+	} else if idx < len(parent.Children)-1 && len(parent.Children[idx+1].Entries) > minKeys {
 		borrowFromRight(parent, idx)
 	} else {
 		if idx > 0 {
-			mergeWithLeft(bTree, parent, idx)
+			mergeWithLeft(b, parent, idx)
 		} else {
-			mergeWithRight(bTree, parent, idx)
+			mergeWithRight(b, parent, idx)
 		}
 	}
 }
 
-func findPredecessor(node *BTreeNode, idx int) uint32 {
+func borrowFromLeft(parent *BTreeNode, idx int) {
+	left := parent.Children[idx-1]
+	child := parent.Children[idx]
+	child.Entries = append([]Entry{parent.Entries[idx-1]}, child.Entries...)
+	parent.Entries[idx-1] = left.Entries[len(left.Entries)-1]
+	left.Entries = left.Entries[:len(left.Entries)-1]
+	if len(left.Children) > 0 {
+		child.Children = append([]*BTreeNode{left.Children[len(left.Children)-1]}, child.Children...)
+		left.Children = left.Children[:len(left.Children)-1]
+		child.Children[0].Parent = child
+	}
+}
+
+func borrowFromRight(parent *BTreeNode, idx int) {
+	right := parent.Children[idx+1]
+	child := parent.Children[idx]
+	child.Entries = append(child.Entries, parent.Entries[idx])
+	parent.Entries[idx] = right.Entries[0]
+	right.Entries = right.Entries[1:]
+	if len(right.Children) > 0 {
+		child.Children = append(child.Children, right.Children[0])
+		right.Children[0].Parent = child
+		right.Children = right.Children[1:]
+	}
+}
+
+func mergeWithLeft(b *BTree, parent *BTreeNode, idx int) {
+	left := parent.Children[idx-1]
+	child := parent.Children[idx]
+	left.Entries = append(left.Entries, parent.Entries[idx-1])
+	left.Entries = append(left.Entries, child.Entries...)
+	if len(child.Children) > 0 {
+		left.Children = append(left.Children, child.Children...)
+		for _, c := range child.Children {
+			c.Parent = left
+		}
+	}
+	parent.Entries = append(parent.Entries[:idx-1], parent.Entries[idx:]...)
+	parent.Children = append(parent.Children[:idx], parent.Children[idx+1:]...)
+	fixUnderflow(b, parent)
+}
+
+func mergeWithRight(b *BTree, parent *BTreeNode, idx int) {
+	child := parent.Children[idx]
+	right := parent.Children[idx+1]
+	child.Entries = append(child.Entries, parent.Entries[idx])
+	child.Entries = append(child.Entries, right.Entries...)
+	if len(right.Children) > 0 {
+		child.Children = append(child.Children, right.Children...)
+		for _, c := range right.Children {
+			c.Parent = child
+		}
+	}
+	parent.Entries = append(parent.Entries[:idx], parent.Entries[idx+1:]...)
+	parent.Children = append(parent.Children[:idx+1], parent.Children[idx+2:]...)
+	fixUnderflow(b, parent)
+}
+
+func findPredecessorEntry(node *BTreeNode, idx int) Entry {
 	curr := node.Children[idx]
 	for len(curr.Children) > 0 {
 		curr = curr.Children[len(curr.Children)-1]
 	}
-	return curr.Values[len(curr.Values)-1]
+	return curr.Entries[len(curr.Entries)-1]
+}
+
+func findInsertIndex(entries []Entry, key string) int {
+	for i, e := range entries {
+		if key <= e.Key {
+			return i
+		}
+	}
+	return len(entries)
+}
+
+func insertEntryAt(entries []Entry, idx int, e Entry) []Entry {
+	entries = append(entries, Entry{})
+	copy(entries[idx+1:], entries[idx:])
+	entries[idx] = e
+	return entries
+}
+
+func replaceChild(children []*BTreeNode, old, left, right *BTreeNode) []*BTreeNode {
+	newChildren := []*BTreeNode{}
+	for _, c := range children {
+		if c == old {
+			newChildren = append(newChildren, left, right)
+		} else {
+			newChildren = append(newChildren, c)
+		}
+	}
+	return newChildren
 }
 
 func childIndex(parent *BTreeNode, child *BTreeNode) int {
@@ -254,107 +300,65 @@ func childIndex(parent *BTreeNode, child *BTreeNode) int {
 	return -1
 }
 
-func borrowFromLeft(parent *BTreeNode, idx int) {
-	left := parent.Children[idx-1]
-	child := parent.Children[idx]
-	child.Values = append([]uint32{parent.Values[idx-1]}, child.Values...)
-	parent.Values[idx-1] = left.Values[len(left.Values)-1]
-	left.Values = left.Values[:len(left.Values)-1]
-	if len(left.Children) > 0 {
-		child.Children = append([]*BTreeNode{left.Children[len(left.Children)-1]}, child.Children...)
-		left.Children = left.Children[:len(left.Children)-1]
-		child.Children[0].Parent = child
-	}
-}
-
-func borrowFromRight(parent *BTreeNode, idx int) {
-	right := parent.Children[idx+1]
-	child := parent.Children[idx]
-	child.Values = append(child.Values, parent.Values[idx])
-	parent.Values[idx] = right.Values[0]
-	right.Values = right.Values[1:]
-	if len(right.Children) > 0 {
-		child.Children = append(child.Children, right.Children[0])
-		right.Children[0].Parent = child
-		right.Children = right.Children[1:]
-	}
-}
-
-func mergeWithLeft(bTree *BTree, parent *BTreeNode, idx int) {
-	left := parent.Children[idx-1]
-	child := parent.Children[idx]
-	left.Values = append(left.Values, parent.Values[idx-1])
-	left.Values = append(left.Values, child.Values...)
-	if len(child.Children) > 0 {
-		left.Children = append(left.Children, child.Children...)
-		for _, c := range child.Children {
-			c.Parent = left
-		}
-	}
-	parent.Values = append(parent.Values[:idx-1], parent.Values[idx:]...)
-	parent.Children = append(parent.Children[:idx], parent.Children[idx+1:]...)
-	fixUnderflow(bTree, parent)
-}
-
-func mergeWithRight(bTree *BTree, parent *BTreeNode, idx int) {
-	child := parent.Children[idx]
-	right := parent.Children[idx+1]
-	child.Values = append(child.Values, parent.Values[idx])
-	child.Values = append(child.Values, right.Values...)
-	if len(right.Children) > 0 {
-		child.Children = append(child.Children, right.Children...)
-		for _, c := range right.Children {
-			c.Parent = child
-		}
-	}
-	parent.Values = append(parent.Values[:idx], parent.Values[idx+1:]...)
-	parent.Children = append(parent.Children[:idx+1], parent.Children[idx+2:]...)
-	fixUnderflow(bTree, parent)
-}
-
-func indexOf(arr []uint32, value uint32) int {
-	for i, v := range arr {
-		if v == value {
-			return i
-		}
-	}
-	return -1
-}
+// ---------------- debug ----------------
 
 func PrintTree(node *BTreeNode, level int) {
 	if node == nil {
 		return
 	}
-	fmt.Printf("%sLevel %d: %v\n", strings.Repeat(" ", level*2), level, node.Values)
+	fmt.Printf("%sLevel %d: %v\n", strings.Repeat("  ", level), level, node.Entries)
 	for _, child := range node.Children {
 		PrintTree(child, level+1)
 	}
 }
 
 func TestBTree() {
-	fmt.Println("\nBTree test:\n")
+	fmt.Println("\nBTree test with key–value pairs:\n")
 	tree := NewBTree(4)
-	values := []uint32{10, 20, 5, 15, 25, 30, 35, 40, 45}
-	for _, value := range values {
-		fmt.Printf("Putting value: %d\n", value)
-		tree.Put(value)
+
+	pairs := []struct {
+		key   string
+		value string
+	}{
+		{"k10", "apple"},
+		{"k20", "banana"},
+		{"k05", "grape"},
+		{"k15", "peach"},
+		{"k25", "melon"},
+		{"k30", "pear"},
+		{"k35", "plum"},
+		{"k40", "kiwi"},
+		{"k45", "lime"},
+	}
+
+	for _, p := range pairs {
+		fmt.Printf("Putting: %s -> %s\n", p.key, p.value)
+		tree.Put(p.key, []byte(p.value))
 		PrintTree(tree.Root, 0)
 		fmt.Println()
 	}
 
-	fmt.Printf("Deleting value: %d\n", 15)
-	tree.Delete(15)
-	PrintTree(tree.Root, 0)
-	fmt.Println()
+	key := "k20"
+	value, found := tree.Get(key)
+	if found {
+		fmt.Printf("Get %s: %s\n", key, string(value))
+	} else {
+		fmt.Printf("Get %s: not found\n", key)
+	}
 
-	fmt.Printf("Deleting value: %d\n", 30)
-	tree.Delete(30)
+	fmt.Printf("\nDeleting key: %s\n", "k15")
+	tree.Delete("k15")
 	PrintTree(tree.Root, 0)
-	fmt.Println()
 
-	// Try Get:
-	found, node := tree.Get(20)
-	fmt.Println("Get 20:", found, node)
-	found2, node2 := tree.Get(50)
-	fmt.Println("Get 50:", found2, node2)
+	fmt.Printf("\nDeleting key: %s\n", "k30")
+	tree.Delete("k30")
+	PrintTree(tree.Root, 0)
+
+	key = "k15"
+	value, found = tree.Get(key)
+	if found {
+		fmt.Printf("Get %s: %s\n", key, string(value))
+	} else {
+		fmt.Printf("Get %s: not found\n", key)
+	}
 }
