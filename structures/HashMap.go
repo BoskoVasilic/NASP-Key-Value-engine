@@ -2,6 +2,7 @@ package structures
 
 import (
 	utils "KVengine/utils"
+	"sort"
 )
 
 type HashMap struct {
@@ -24,7 +25,7 @@ func NewHashMap(size int) *HashMap {
 
 func (h *HashMap) hash(key string) int {
 	hash := 0
-	for i := 0; i < len(key); i++ {
+	for i := range len(key) {
 		hash = (hash*31 + int(key[i])) % h.size
 	}
 	return hash
@@ -73,16 +74,59 @@ func (h *HashMap) SerializeHM() []byte {
 		bucketLen := utils.Uint32ToBytes(uint32(len(bucket)))
 		buf = append(buf, bucketLen...)
 		for _, e := range bucket {
-			keyLen := utils.Uint32ToBytes(uint32(len(e.key)))
+
+			buf = append(buf, e.toBytes()...)
+			/* keyLen := utils.Uint32ToBytes(uint32(len(e.key)))
 			buf = append(buf, keyLen...)
 			buf = append(buf, []byte(e.key)...)
 
 			valLen := utils.Uint32ToBytes(uint32(len(e.value)))
 			buf = append(buf, valLen...)
-			buf = append(buf, e.value...)
+			buf = append(buf, e.value...) */
 		}
 	}
 
+	return buf
+}
+
+func (ent *entry) toBytes() []byte {
+	buf := make([]byte, 0)
+
+	keyLen := utils.Uint32ToBytes(uint32(len(ent.key)))
+	buf = append(buf, keyLen...)
+
+	if ent.deleted {
+		buf = append(buf, utils.Uint32ToBytes(^uint32(0))...)
+		buf = append(buf, []byte(ent.key)...)
+	} else {
+		valLen := utils.Uint32ToBytes(uint32(len(ent.value)))
+		buf = append(buf, valLen...)
+		buf = append(buf, []byte(ent.key)...)
+		buf = append(buf, ent.value...)
+	}
+	return buf
+}
+
+func (h *HashMap) ToBytes() []byte {
+	buf := make([]byte, 0)
+
+	entries := make([]*entry, 0)
+
+	sizeBytes := utils.Uint32ToBytes(uint32(h.size))
+	buf = append(buf, sizeBytes...)
+
+	for _, bucket := range h.buckets {
+		for _, e := range bucket {
+			entries = append(entries, &e)
+		}
+	}
+
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].key < entries[j].key
+	})
+	for i := range entries {
+		buf = append(buf, entries[i].toBytes()...)
+	}
 	return buf
 }
 
