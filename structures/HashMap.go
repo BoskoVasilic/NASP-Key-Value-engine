@@ -1,6 +1,8 @@
 package structures
 
-import utils "KVengine/utils"
+import (
+	utils "KVengine/utils"
+)
 
 type HashMap struct {
 	buckets [][]entry
@@ -8,8 +10,9 @@ type HashMap struct {
 }
 
 type entry struct {
-	key   string
-	value []byte
+	key     string
+	value   []byte
+	deleted bool
 }
 
 func NewHashMap(size int) *HashMap {
@@ -35,7 +38,7 @@ func (h *HashMap) Put(key string, value []byte) {
 			return
 		}
 	}
-	h.buckets[index] = append(h.buckets[index], entry{key, value})
+	h.buckets[index] = append(h.buckets[index], entry{key, value, false})
 }
 
 func (h *HashMap) Get(key string) ([]byte, bool) {
@@ -52,10 +55,12 @@ func (h *HashMap) Delete(key string) {
 	index := h.hash(key)
 	for i, e := range h.buckets[index] {
 		if e.key == key {
-			h.buckets[index] = append(h.buckets[index][:i], h.buckets[index][i+1:]...)
+			h.buckets[index][i].value = []byte{}
+			h.buckets[index][i].deleted = true
 			return
 		}
 	}
+
 }
 
 func (h *HashMap) SerializeHM() []byte {
