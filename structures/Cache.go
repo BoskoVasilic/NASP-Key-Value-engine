@@ -37,6 +37,8 @@ func (c *Cache) Put(key string, value any) {
 		if success {
 			delete(c.hm, last.key)
 		}
+	} else {
+		c.size++
 	}
 }
 
