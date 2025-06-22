@@ -1,6 +1,7 @@
 package structures
 
 import (
+	utils "KVengine/utils"
 	"fmt"
 	"math/rand"
 )
@@ -160,21 +161,18 @@ func (s *SkipList) Delete(key string) error {
 	err := s.insert(key, nil, ^uint64(0))
 	return err
 }
-func (s *SkipList) Itterate() func() (string, []byte, uint64, bool) {
-	currentNode := s.head
-	for currentNode.down != nil {
-		currentNode = currentNode.down
+func (s *SkipList) GetIter() *utils.Iterator[Node, []byte] {
+	curentNode := s.head
+	for curentNode.down != nil {
+		curentNode = curentNode.down
 	}
-	currentNode = currentNode.next // Start from the first node in the lowest level
-	return func() (string, []byte, uint64, bool) {
-		if currentNode == nil {
-			return "", nil, 0, true // end of iteration
+	curentNode = curentNode.next
+	return utils.NewIterator(curentNode, 0, func(obj *Node, pos int) ([]byte, bool) {
+		if obj == nil {
+			return nil, false
 		}
-		key := currentNode.key
-		value := currentNode.value
-		size := currentNode.size
-		currentNode = currentNode.next
-		endIter := currentNode == nil
-		return key, value, size, endIter
-	}
+		value := obj.value
+		obj = obj.next
+		return value, true
+	})
 }
