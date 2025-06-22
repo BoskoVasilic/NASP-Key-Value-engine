@@ -1,7 +1,8 @@
 package structures
 
 type Storage interface {
-	Get(key string) (value string, err error)
-	Put(key string, value string) error
-	Delete(key string) error
+	Get(key string) (value []byte, found bool)
+	Put(key string, value []byte)
+	Delete(key string)
+	Iterate(func(uint64, string, []byte) bool)
 }
