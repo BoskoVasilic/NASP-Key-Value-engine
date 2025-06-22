@@ -13,16 +13,6 @@ type Node struct {
 	size  uint64
 }
 
-func (n *Node) GetKey() string {
-	return n.key
-}
-func (n *Node) GetValue() []byte {
-	return n.value
-}
-func (n *Node) GetSize() uint64 {
-	return n.size
-}
-
 type SkipList struct {
 	currentHeight int
 	head          *Node
@@ -170,17 +160,21 @@ func (s *SkipList) Delete(key string) error {
 	err := s.insert(key, nil, ^uint64(0))
 	return err
 }
-func (s *SkipList) Itterate(yield func(n *Node) bool) {
+func (s *SkipList) Itterate() func() (string, []byte, uint64, bool) {
 	currentNode := s.head
 	for currentNode.down != nil {
 		currentNode = currentNode.down
 	}
-
-	currentNode = currentNode.next
-	for currentNode != nil {
-		if !yield(currentNode) {
-			return
+	currentNode = currentNode.next // Start from the first node in the lowest level
+	return func() (string, []byte, uint64, bool) {
+		if currentNode == nil {
+			return "", nil, 0, true // end of iteration
 		}
+		key := currentNode.key
+		value := currentNode.value
+		size := currentNode.size
 		currentNode = currentNode.next
+		endIter := currentNode == nil
+		return key, value, size, endIter
 	}
 }
