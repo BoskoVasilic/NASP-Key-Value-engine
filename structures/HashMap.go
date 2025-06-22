@@ -130,6 +130,30 @@ func (h *HashMap) ToBytes() []byte {
 	return buf
 }
 
+func (h *HashMap) GetIter() *utils.Iterator[[]*entry, []byte] {
+
+	entries := make([]*entry, 0)
+
+	for _, bucket := range h.buckets {
+		for _, e := range bucket {
+			entries = append(entries, &e)
+		}
+	}
+
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].key < entries[j].key
+	})
+
+	return utils.NewIterator(&entries, 0, func(obj *[]*entry, i int) ([]byte, bool) {
+		if i >= len(*obj) {
+			return nil, false
+		}
+		return (*obj)[i].toBytes(), true
+
+	})
+
+}
+
 func DeserializeHM(data []byte) *HashMap {
 	offset := 0
 	size := utils.BytesToUint32(data[offset : offset+4])
