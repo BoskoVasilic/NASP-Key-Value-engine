@@ -161,18 +161,18 @@ func (s *SkipList) Delete(key string) error {
 	err := s.insert(key, nil, ^uint64(0))
 	return err
 }
-func (s *SkipList) GetIter() *utils.Iterator[Node, []byte] {
+func (s *SkipList) GetIter() *utils.Iterator[Node, *utils.ExportEntry] {
 	curentNode := s.head
 	for curentNode.down != nil {
 		curentNode = curentNode.down
 	}
 	curentNode = curentNode.next
-	return utils.NewIterator(curentNode, 0, func(obj *Node, pos int) ([]byte, bool) {
+	return utils.NewIterator(curentNode, 0, func(obj *Node, pos int) (*utils.ExportEntry, bool) {
 		if obj == nil {
 			return nil, false
 		}
-		value := obj.value
+		Entery := utils.NewExportEntry(obj.key, obj.size, obj.value)
 		obj = obj.next
-		return value, true
+		return Entery, true
 	})
 }
