@@ -1,24 +1,25 @@
 package utils
 
-type Iterator[T any] struct {
+type Iterator[T any, V any] struct {
 	obj     *T
-	extract func(*T, int) (string, uint64, []byte, bool)
+	extract func(*T, int) (V, bool)
 	pos     int
 }
 
-func NewIterator[T any](obj *T, pos int, extract func(*T, int) (string, uint64, []byte, bool)) *Iterator[T] {
-	return &Iterator[T]{
+func NewIterator[T any, V any](obj *T, pos int, extract func(*T, int) (V, bool)) *Iterator[T, V] {
+	return &Iterator[T, V]{
 		obj:     obj,
 		extract: extract,
 		pos:     pos,
 	}
 }
 
-func (it *Iterator[T]) Next() (string, uint64, []byte, bool) {
-	key, val_size, val, success := it.extract(it.obj, it.pos)
+func (it *Iterator[T, V]) Next() (V, bool) {
+	var zero V
+	val, success := it.extract(it.obj, it.pos)
 	if !success {
-		return "", 0, nil, false
+		return zero, false
 	}
 	it.pos++
-	return key, val_size, val, true
+	return val, true
 }
