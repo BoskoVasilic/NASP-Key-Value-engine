@@ -2,34 +2,34 @@ package structures
 
 import "KVengine/structures/auxiliary"
 
-type Entry struct {
-	key   string
-	value any
+type Entry[K comparable, V any] struct {
+	key   K
+	value V
 }
 
-type Cache struct {
+type Cache[K comparable, V any] struct {
 	maxSize int
 	size    int
-	dll     *auxiliary.DLList[Entry]
-	hm      map[string]*auxiliary.Node[Entry]
+	dll     *auxiliary.DLList[Entry[K, V]]
+	hm      map[K]*auxiliary.Node[Entry[K, V]]
 }
 
-func NewCache(maCashSize int) *Cache {
-	return &Cache{
+func NewCache[K comparable, V any](maCashSize int) *Cache[K, V] {
+	return &Cache[K, V]{
 		size:    0,
 		maxSize: maCashSize,
-		dll:     auxiliary.NewDLList[Entry](),
-		hm:      make(map[string]*auxiliary.Node[Entry]),
+		dll:     auxiliary.NewDLList[Entry[K, V]](),
+		hm:      make(map[K]*auxiliary.Node[Entry[K, V]]),
 	}
 }
 
-func (c *Cache) Put(key string, value any) {
+func (c *Cache[K, V]) Put(key K, value V) {
 	node, ok := c.hm[key]
 	if ok {
 		c.dll.MoveToFront(node)
 		return
 	}
-	entry := &Entry{key: key, value: value}
+	entry := &Entry[K, V]{key: key, value: value}
 	node = c.dll.PushFront(entry)
 	c.hm[key] = node
 	if c.size >= c.maxSize {
@@ -42,11 +42,12 @@ func (c *Cache) Put(key string, value any) {
 	}
 }
 
-func (c *Cache) Get(key string) (any, bool) {
+func (c *Cache[K, V]) Get(key K) (V, bool) {
+	var zero V
 	node, ok := c.hm[key]
 	if !ok {
-		return nil, false
+		return zero, false
 	}
 	c.dll.MoveToFront(node)
-	return node.Value, true
+	return node.Value.value, true
 }
