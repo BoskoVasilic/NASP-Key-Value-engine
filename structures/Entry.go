@@ -8,6 +8,18 @@ type Entry struct {
 	deleted bool
 }
 
+func (e Entry) GetKey() string {
+	return e.key
+}
+
+func (e Entry) GetValue() []byte {
+	return e.value
+}
+
+func (e Entry) IsDeleted() bool {
+	return e.deleted
+}
+
 func (ent *Entry) toBytes() []byte {
 	buf := make([]byte, 0)
 
