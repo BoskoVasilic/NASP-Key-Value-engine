@@ -1,6 +1,7 @@
 package structures
 
 import (
+	utils "KVengine/utils"
 	"fmt"
 	"math/rand"
 )
@@ -11,16 +12,6 @@ type Node struct {
 	next  *Node
 	down  *Node
 	size  uint64
-}
-
-func (n *Node) GetKey() string {
-	return n.key
-}
-func (n *Node) GetValue() []byte {
-	return n.value
-}
-func (n *Node) GetSize() uint64 {
-	return n.size
 }
 
 type SkipList struct {
@@ -170,17 +161,18 @@ func (s *SkipList) Delete(key string) error {
 	err := s.insert(key, nil, ^uint64(0))
 	return err
 }
-func (s *SkipList) Itterate(yield func(n *Node) bool) {
-	currentNode := s.head
-	for currentNode.down != nil {
-		currentNode = currentNode.down
+func (s *SkipList) GetIter() *utils.Iterator[Node, *utils.ExportEntry] {
+	curentNode := s.head
+	for curentNode.down != nil {
+		curentNode = curentNode.down
 	}
-
-	currentNode = currentNode.next
-	for currentNode != nil {
-		if !yield(currentNode) {
-			return
+	curentNode = curentNode.next
+	return utils.NewIterator(curentNode, 0, func(obj *Node, pos int) (*utils.ExportEntry, bool) {
+		if obj == nil {
+			return nil, false
 		}
-		currentNode = currentNode.next
-	}
+		Entery := utils.NewExportEntry(obj.key, obj.size, obj.value)
+		obj = obj.next
+		return Entery, true
+	})
 }
