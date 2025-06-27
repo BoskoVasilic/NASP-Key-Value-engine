@@ -6,19 +6,13 @@ import (
 )
 
 type HashMap struct {
-	buckets [][]entry
+	buckets [][]Entry
 	size    int
-}
-
-type entry struct {
-	key     string
-	value   []byte
-	deleted bool
 }
 
 func NewHashMap(size int) *HashMap {
 	return &HashMap{
-		buckets: make([][]entry, size),
+		buckets: make([][]Entry, size),
 		size:    size,
 	}
 }
@@ -39,7 +33,7 @@ func (h *HashMap) Put(key string, value []byte) {
 			return
 		}
 	}
-	h.buckets[index] = append(h.buckets[index], entry{key, value, false})
+	h.buckets[index] = append(h.buckets[index], Entry{key, value, false})
 }
 
 func (h *HashMap) Get(key string) ([]byte, bool) {
@@ -89,28 +83,10 @@ func (h *HashMap) SerializeHM() []byte {
 	return buf
 }
 
-func (ent *entry) toBytes() []byte {
-	buf := make([]byte, 0)
-
-	keyLen := utils.Uint32ToBytes(uint32(len(ent.key)))
-	buf = append(buf, keyLen...)
-
-	if ent.deleted {
-		buf = append(buf, utils.Uint32ToBytes(^uint32(0))...)
-		buf = append(buf, []byte(ent.key)...)
-	} else {
-		valLen := utils.Uint32ToBytes(uint32(len(ent.value)))
-		buf = append(buf, valLen...)
-		buf = append(buf, []byte(ent.key)...)
-		buf = append(buf, ent.value...)
-	}
-	return buf
-}
-
 func (h *HashMap) ToBytes() []byte {
 	buf := make([]byte, 0)
 
-	entries := make([]*entry, 0)
+	entries := make([]*Entry, 0)
 
 	sizeBytes := utils.Uint32ToBytes(uint32(h.size))
 	buf = append(buf, sizeBytes...)

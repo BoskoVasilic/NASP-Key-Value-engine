@@ -2,7 +2,7 @@ package structures
 
 import "KVengine/structures/auxiliary"
 
-type Entry struct {
+type CacheEntry struct {
 	key   string
 	value any
 }
@@ -10,16 +10,16 @@ type Entry struct {
 type Cache struct {
 	maxSize int
 	size    int
-	dll     *auxiliary.DLList[Entry]
-	hm      map[string]*auxiliary.Node[Entry]
+	dll     *auxiliary.DLList[CacheEntry]
+	hm      map[string]*auxiliary.Node[CacheEntry]
 }
 
 func NewCache(maCashSize int) *Cache {
 	return &Cache{
 		size:    0,
 		maxSize: maCashSize,
-		dll:     auxiliary.NewDLList[Entry](),
-		hm:      make(map[string]*auxiliary.Node[Entry]),
+		dll:     auxiliary.NewDLList[CacheEntry](),
+		hm:      make(map[string]*auxiliary.Node[CacheEntry]),
 	}
 }
 
@@ -29,7 +29,7 @@ func (c *Cache) Put(key string, value any) {
 		c.dll.MoveToFront(node)
 		return
 	}
-	entry := &Entry{key: key, value: value}
+	entry := &CacheEntry{key: key, value: value}
 	node = c.dll.PushFront(entry)
 	c.hm[key] = node
 	if c.size >= c.maxSize {
