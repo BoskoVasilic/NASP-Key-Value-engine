@@ -106,7 +106,7 @@ func (h *HashMap) ToBytes() []byte {
 	return buf
 }
 
-func (h *HashMap) GetIter() *utils.Iterator[[]*Entry, []byte] {
+func (h *HashMap) GetIter() *utils.Iterator[[]*Entry, int, []byte] {
 
 	entries := make([]*Entry, 0)
 
@@ -124,6 +124,7 @@ func (h *HashMap) GetIter() *utils.Iterator[[]*Entry, []byte] {
 		if i >= len(*obj) {
 			return nil, false
 		}
+		i++
 		return (*obj)[i].toBytes(), true
 
 	})
