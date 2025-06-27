@@ -106,9 +106,9 @@ func (h *HashMap) ToBytes() []byte {
 	return buf
 }
 
-func (h *HashMap) GetIter() *utils.Iterator[[]*entry, []byte] {
+func (h *HashMap) GetIter() *utils.Iterator[[]*Entry, []byte] {
 
-	entries := make([]*entry, 0)
+	entries := make([]*Entry, 0)
 
 	for _, bucket := range h.buckets {
 		for _, e := range bucket {
@@ -120,7 +120,7 @@ func (h *HashMap) GetIter() *utils.Iterator[[]*entry, []byte] {
 		return entries[i].key < entries[j].key
 	})
 
-	return utils.NewIterator(&entries, 0, func(obj *[]*entry, i int) ([]byte, bool) {
+	return utils.NewIterator(&entries, 0, func(obj *[]*Entry, i int) ([]byte, bool) {
 		if i >= len(*obj) {
 			return nil, false
 		}
