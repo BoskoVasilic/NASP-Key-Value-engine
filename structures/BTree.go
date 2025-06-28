@@ -2,9 +2,11 @@ package structures
 
 import (
 	"fmt"
+	"sort"
 	"strings"
-)
 
+	utils "KVengine/utils"
+)
 
 // BTreeNode holds sorted entries.
 type BTreeNode struct {
@@ -35,7 +37,7 @@ func (b *BTree) Put(key string, value []byte, tombstone bool) {
 		b.Height = 1
 		b.Size++
 	} else {
-		insertEntry(b, b.Root, Entry{key: key, value: value})
+		insertEntry(b, b.Root, Entry{key: key, value: value, deleted: tombstone})
 	}
 }
 
@@ -45,6 +47,9 @@ func (b *BTree) Get(key string) ([]byte, bool) {
 	for node != nil {
 		for i, e := range node.Entries {
 			if key == e.key {
+				if e.deleted {
+					return nil, false
+				}
 				return e.value, true
 			} else if key < e.key {
 				if len(node.Children) > 0 {
@@ -64,20 +69,34 @@ func (b *BTree) Get(key string) ([]byte, bool) {
 	return nil, false
 }
 
-// Delete removes a key from the B-Tree.
+// Delete marks a key as logically deleted.
 func (b *BTree) Delete(key string) {
 	if b.Root == nil {
 		return
 	}
-	deleteEntry(b, b.Root, key)
-	if len(b.Root.Entries) == 0 && len(b.Root.Children) > 0 {
-		b.Root = b.Root.Children[0]
-		b.Root.Parent = nil
-		b.Height--
-	}
-	if len(b.Root.Entries) == 0 && len(b.Root.Children) == 0 {
-		b.Root = nil
-		b.Height = 0
+	markEntrydeleted(b.Root, key)
+}
+
+func markEntrydeleted(node *BTreeNode, key string) {
+	for {
+		for i, e := range node.Entries {
+			if key == e.key {
+				node.Entries[i].deleted = true
+				return
+			} else if key < e.key {
+				if len(node.Children) > 0 {
+					node = node.Children[i]
+					goto NEXT
+				}
+				return
+			}
+		}
+		if len(node.Children) > 0 {
+			node = node.Children[len(node.Children)-1]
+		} else {
+			return
+		}
+	NEXT:
 	}
 }
 
@@ -89,6 +108,7 @@ func insertEntry(b *BTree, node *BTreeNode, entry Entry) {
 		idx := findInsertIndex(node.Entries, entry.key)
 		if idx < len(node.Entries) && node.Entries[idx].key == entry.key {
 			node.Entries[idx].value = entry.value
+			node.Entries[idx].deleted = entry.deleted
 			return
 		}
 		node.Entries = insertEntryAt(node.Entries, idx, entry)
@@ -102,6 +122,7 @@ func insertEntry(b *BTree, node *BTreeNode, entry Entry) {
 	idx := findInsertIndex(node.Entries, entry.key)
 	if idx < len(node.Entries) && node.Entries[idx].key == entry.key {
 		node.Entries[idx].value = entry.value
+		node.Entries[idx].deleted = entry.deleted
 		return
 	}
 	insertEntry(b, node.Children[idx], entry)
@@ -150,114 +171,6 @@ func splitNode(b *BTree, node *BTreeNode) {
 	}
 }
 
-func deleteEntry(b *BTree, node *BTreeNode, key string) {
-	idx := findInsertIndex(node.Entries, key)
-	if idx < len(node.Entries) && node.Entries[idx].key == key {
-		if len(node.Children) == 0 {
-			node.Entries = append(node.Entries[:idx], node.Entries[idx+1:]...)
-			fixUnderflow(b, node)
-		} else {
-			pre := findPredecessorEntry(node, idx)
-			node.Entries[idx] = pre
-			deleteEntry(b, node.Children[idx], pre.key)
-		}
-	} else if len(node.Children) > 0 {
-		deleteEntry(b, node.Children[idx], key)
-	}
-}
-
-func fixUnderflow(b *BTree, node *BTreeNode) {
-	minKeys := int(b.Order)/2 - 1
-	if node == b.Root || len(node.Entries) >= minKeys {
-		return
-	}
-
-	parent := node.Parent
-	if parent == nil {
-		return
-	}
-
-	idx := childIndex(parent, node)
-
-	if idx > 0 && len(parent.Children[idx-1].Entries) > minKeys {
-		borrowFromLeft(parent, idx)
-	} else if idx < len(parent.Children)-1 && len(parent.Children[idx+1].Entries) > minKeys {
-		borrowFromRight(parent, idx)
-	} else {
-		if idx > 0 {
-			mergeWithLeft(b, parent, idx)
-		} else {
-			mergeWithRight(b, parent, idx)
-		}
-	}
-}
-
-func borrowFromLeft(parent *BTreeNode, idx int) {
-	left := parent.Children[idx-1]
-	child := parent.Children[idx]
-	child.Entries = append([]Entry{parent.Entries[idx-1]}, child.Entries...)
-	parent.Entries[idx-1] = left.Entries[len(left.Entries)-1]
-	left.Entries = left.Entries[:len(left.Entries)-1]
-	if len(left.Children) > 0 {
-		child.Children = append([]*BTreeNode{left.Children[len(left.Children)-1]}, child.Children...)
-		left.Children = left.Children[:len(left.Children)-1]
-		child.Children[0].Parent = child
-	}
-}
-
-func borrowFromRight(parent *BTreeNode, idx int) {
-	right := parent.Children[idx+1]
-	child := parent.Children[idx]
-	child.Entries = append(child.Entries, parent.Entries[idx])
-	parent.Entries[idx] = right.Entries[0]
-	right.Entries = right.Entries[1:]
-	if len(right.Children) > 0 {
-		child.Children = append(child.Children, right.Children[0])
-		right.Children[0].Parent = child
-		right.Children = right.Children[1:]
-	}
-}
-
-func mergeWithLeft(b *BTree, parent *BTreeNode, idx int) {
-	left := parent.Children[idx-1]
-	child := parent.Children[idx]
-	left.Entries = append(left.Entries, parent.Entries[idx-1])
-	left.Entries = append(left.Entries, child.Entries...)
-	if len(child.Children) > 0 {
-		left.Children = append(left.Children, child.Children...)
-		for _, c := range child.Children {
-			c.Parent = left
-		}
-	}
-	parent.Entries = append(parent.Entries[:idx-1], parent.Entries[idx:]...)
-	parent.Children = append(parent.Children[:idx], parent.Children[idx+1:]...)
-	fixUnderflow(b, parent)
-}
-
-func mergeWithRight(b *BTree, parent *BTreeNode, idx int) {
-	child := parent.Children[idx]
-	right := parent.Children[idx+1]
-	child.Entries = append(child.Entries, parent.Entries[idx])
-	child.Entries = append(child.Entries, right.Entries...)
-	if len(right.Children) > 0 {
-		child.Children = append(child.Children, right.Children...)
-		for _, c := range right.Children {
-			c.Parent = child
-		}
-	}
-	parent.Entries = append(parent.Entries[:idx], parent.Entries[idx+1:]...)
-	parent.Children = append(parent.Children[:idx+1], parent.Children[idx+2:]...)
-	fixUnderflow(b, parent)
-}
-
-func findPredecessorEntry(node *BTreeNode, idx int) Entry {
-	curr := node.Children[idx]
-	for len(curr.Children) > 0 {
-		curr = curr.Children[len(curr.Children)-1]
-	}
-	return curr.Entries[len(curr.Entries)-1]
-}
-
 func findInsertIndex(entries []Entry, key string) int {
 	for i, e := range entries {
 		if key <= e.key {
@@ -286,13 +199,57 @@ func replaceChild(children []*BTreeNode, old, left, right *BTreeNode) []*BTreeNo
 	return newChildren
 }
 
-func childIndex(parent *BTreeNode, child *BTreeNode) int {
-	for i, c := range parent.Children {
-		if c == child {
-			return i
+// ---------------- iterator ----------------
+
+func (b *BTree) GetIter() *utils.Iterator[[]*Entry, []byte] {
+	allEntries := collectEntries(b.Root)
+
+	sort.Slice(allEntries, func(i, j int) bool {
+		return allEntries[i].key < allEntries[j].key
+	})
+
+	return utils.NewIterator(&allEntries, 0, func(entries *[]*Entry, pos int) ([]byte, bool) {
+		if pos >= len(*entries) {
+			return nil, false
 		}
+		e := (*entries)[pos]
+		return e.toBytes(), true
+	})
+}
+
+func collectEntries(node *BTreeNode) []*Entry {
+	if node == nil {
+		return nil
 	}
-	return -1
+	var result []*Entry
+	for i := range node.Entries {
+		result = append(result, &node.Entries[i])
+	}
+	for _, c := range node.Children {
+		result = append(result, collectEntries(c)...)
+	}
+	return result
+}
+
+// ---------------- serialization ----------------
+
+func (b *BTree) Serialize() []byte {
+	buf := make([]byte, 0)
+
+	sizeBytes := utils.Uint32ToBytes(b.Size)
+	buf = append(buf, sizeBytes...)
+
+	entries := collectEntries(b.Root)
+
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].key < entries[j].key
+	})
+
+	for _, e := range entries {
+		buf = append(buf, e.toBytes()...)
+	}
+
+	return buf
 }
 
 // ---------------- debug ----------------
@@ -307,10 +264,13 @@ func PrintTree(node *BTreeNode, level int) {
 	}
 }
 
+// ---------------- minimal test ----------------
+
 func TestBTree() {
-	fmt.Println("\nBTree test with key–value pairs:")
+	fmt.Println("\nBTree test with key–value pairs and tombstones:")
 	tree := NewBTree(4)
 
+	// Insert
 	pairs := []struct {
 		key   string
 		value string
@@ -322,38 +282,41 @@ func TestBTree() {
 		{"k25", "melon"},
 		{"k30", "pear"},
 		{"k35", "plum"},
-		{"k40", "kiwi"},
-		{"k45", "lime"},
 	}
 
 	for _, p := range pairs {
 		fmt.Printf("Putting: %s -> %s\n", p.key, p.value)
 		tree.Put(p.key, []byte(p.value), false)
 		PrintTree(tree.Root, 0)
-		fmt.Println()
 	}
 
-	key := "k20"
+	// logical deletion
+	fmt.Printf("\nDeleting key: %s (logical tombstone)\n", "k15")
+	tree.Delete("k15")
+	PrintTree(tree.Root, 0)
+
+	// retrieval
+	key := "k15"
 	value, found := tree.Get(key)
 	if found {
 		fmt.Printf("Get %s: %s\n", key, string(value))
 	} else {
-		fmt.Printf("Get %s: not found\n", key)
+		fmt.Printf("Get %s: tombstoned or not found\n", key)
 	}
 
-	fmt.Printf("\nDeleting key: %s\n", "k15")
-	tree.Delete("k15")
-	PrintTree(tree.Root, 0)
+	// iterator test
+	iter := tree.GetIter()
+	fmt.Println("\nIterating BTree entries:")
+	for {
+		bin, ok := iter.Next()
+		if !ok {
+			break
+    }
+    fmt.Printf("Serialized entry: %v\n", bin)
+}
 
-	fmt.Printf("\nDeleting key: %s\n", "k30")
-	tree.Delete("k30")
-	PrintTree(tree.Root, 0)
 
-	key = "k15"
-	value, found = tree.Get(key)
-	if found {
-		fmt.Printf("Get %s: %s\n", key, string(value))
-	} else {
-		fmt.Printf("Get %s: not found\n", key)
-	}
+	// serialize test
+	serialized := tree.Serialize()
+	fmt.Printf("\nSerialized tree: %v\n", serialized)
 }
