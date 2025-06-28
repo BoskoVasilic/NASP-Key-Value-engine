@@ -25,15 +25,20 @@ func (h *HashMap) hash(key string) int {
 	return hash
 }
 
-func (h *HashMap) Put(key string, value []byte) {
+func (h *HashMap) insert(key string, value []byte, deleted bool) {
 	index := h.hash(key)
 	for i, e := range h.buckets[index] {
 		if e.key == key {
 			h.buckets[index][i].value = value
+			h.buckets[index][i].deleted = deleted
 			return
 		}
 	}
-	h.buckets[index] = append(h.buckets[index], Entry{key, value, false})
+	h.buckets[index] = append(h.buckets[index], Entry{key, value, deleted})
+}
+
+func (h *HashMap) Put(key string, value []byte) {
+	h.insert(key, value, false)
 }
 
 func (h *HashMap) Get(key string) ([]byte, bool) {
@@ -47,14 +52,7 @@ func (h *HashMap) Get(key string) ([]byte, bool) {
 }
 
 func (h *HashMap) Delete(key string) {
-	index := h.hash(key)
-	for i, e := range h.buckets[index] {
-		if e.key == key {
-			h.buckets[index][i].value = []byte{}
-			h.buckets[index][i].deleted = true
-			return
-		}
-	}
+	h.insert(key, nil, true)
 
 }
 
