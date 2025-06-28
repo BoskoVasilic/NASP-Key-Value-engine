@@ -2,7 +2,7 @@ package structures
 
 import "KVengine/structures/auxiliary"
 
-type Entry[K comparable, V any] struct {
+type CacheEntry[K comparable, V any] struct {
 	key   K
 	value V
 }
@@ -10,17 +10,17 @@ type Entry[K comparable, V any] struct {
 type Cache[K comparable, V any] struct {
 	maxSize int
 	size    int
-	dll     *auxiliary.DLList[Entry[K, V]]
-	hm      map[K]*auxiliary.Node[Entry[K, V]]
+	dll     *auxiliary.DLList[CacheEntry[K, V]]
+	hm      map[K]*auxiliary.Node[CacheEntry[K, V]]
 }
 
 func NewCache[K comparable, V any](maCashSize int) *Cache[K, V] {
 	return &Cache[K, V]{
 		size:    0,
 		maxSize: maCashSize,
-		dll:     auxiliary.NewDLList[Entry[K, V]](),
-		hm:      make(map[K]*auxiliary.Node[Entry[K, V]]),
-	}
+		dll:     auxiliary.NewDLList[CacheEntry[K, V]](),
+		hm:      make(map[K]*auxiliary.Node[CacheEntry[K, V]]),
+	  }
 }
 
 func (c *Cache[K, V]) Put(key K, value V) {
@@ -29,7 +29,8 @@ func (c *Cache[K, V]) Put(key K, value V) {
 		c.dll.MoveToFront(node)
 		return
 	}
-	entry := &Entry[K, V]{key: key, value: value}
+	entry := &CacheEntry[K, V]{key: key, value: value}
+
 	node = c.dll.PushFront(entry)
 	c.hm[key] = node
 	if c.size >= c.maxSize {
