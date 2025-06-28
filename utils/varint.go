@@ -11,3 +11,16 @@ func EncodeVarint(x uint64) []byte {
 	buf = append(buf, byte(x))
 	return buf
 }
+
+func DecodeVarint(buf []byte) (uint64, int) {
+	var x uint64
+	var shift uint
+	for i, b := range buf {
+		x |= uint64(b&0x7F) << shift
+		if b&0x80 == 0 {
+			return x, i + 1 // value and bytes consumed
+		}
+		shift += 7
+	}
+	return 0, 0 // incomplete encoding
+}
