@@ -1,105 +1,176 @@
 package structures
 
 import (
-	"crypto/sha256"
+	"crypto/md5"
+	"encoding/hex"
 	"fmt"
+
+	utils "KVengine/utils"
 )
 
-// MerkleNode represents a single node in the Merkle Tree
+// MerkleNode is a tree node
 type MerkleNode struct {
+	Hash  []byte
 	Left  *MerkleNode
 	Right *MerkleNode
-	Hash  []byte
 }
 
-// MerkleTree represents the Merkle Tree itself
+// MerkleTree holds the root and the leaves
 type MerkleTree struct {
-	Root *MerkleNode
+	Root   *MerkleNode
+	Leaves []*MerkleNode
 }
 
-// NewMerkleNode creates a new Merkle node given left and right children and/or data
-func NewMerkleNode(left, right *MerkleNode, data []byte) *MerkleNode {
-	node := &MerkleNode{}
-
-	// If no children, hash the data directly
-	if left == nil && right == nil {
-		hash := sha256.Sum256(data)
-		node.Hash = hash[:]
-	} else {
-		// Concatenate left and right hashes and hash them
-		prevHashes := append(left.Hash, right.Hash...)
-		hash := sha256.Sum256(prevHashes)
-		node.Hash = hash[:]
-	}
-
-	node.Left = left
-	node.Right = right
-
-	return node
+// NewMerkleTree returns an empty MerkleTree
+func NewMerkleTree() *MerkleTree {
+	return &MerkleTree{}
 }
 
-// NewMerkleTree builds a Merkle tree from a list of data blocks
-func NewMerkleTree(data [][]byte) *MerkleTree {
-	var nodes []MerkleNode
-
-	// Create leaf nodes
-	for _, datum := range data {
-		node := NewMerkleNode(nil, nil, datum)
-		nodes = append(nodes, *node)
+// Put adds a new leaf node with the hash of data
+func (m *MerkleTree) Put(data []byte) {
+	hash := md5.Sum(data)
+	node := &MerkleNode{
+		Hash: hash[:],
 	}
+	m.Leaves = append(m.Leaves, node)
+	m.build()
+}
 
-	// Build tree upwards
+// build constructs the tree from current leaves
+func (m *MerkleTree) build() {
+	nodes := m.Leaves
+	if len(nodes) == 0 {
+		m.Root = nil
+		return
+	}
 	for len(nodes) > 1 {
-		var newLevel []MerkleNode
-
+		var newLevel []*MerkleNode
 		for i := 0; i < len(nodes); i += 2 {
-			var left = &nodes[i]
-			var right *MerkleNode
-
-			// If odd number of nodes, duplicate last
 			if i+1 < len(nodes) {
-				right = &nodes[i+1]
+				combined := append(nodes[i].Hash, nodes[i+1].Hash...)
+				h := md5.Sum(combined)
+				parent := &MerkleNode{
+					Hash:  h[:],
+					Left:  nodes[i],
+					Right: nodes[i+1],
+				}
+				newLevel = append(newLevel, parent)
 			} else {
-				right = &nodes[i]
+				// odd node promoted
+				newLevel = append(newLevel, nodes[i])
 			}
-
-			parent := NewMerkleNode(left, right, nil)
-			newLevel = append(newLevel, *parent)
 		}
-
 		nodes = newLevel
 	}
-
-	tree := &MerkleTree{&nodes[0]}
-	return tree
+	m.Root = nodes[0]
 }
 
-func main() {
-	// Example data
-	data := [][]byte{
-		[]byte("Block A"),
-		[]byte("Block B"),
-		[]byte("Block C"),
-		[]byte("Block D"),
+// RootHash returns the hex string of the root hash
+func (m *MerkleTree) RootHash() string {
+	if m.Root == nil {
+		return ""
+	}
+	return hex.EncodeToString(m.Root.Hash)
+}
+
+// Serialize returns the leaves hashes serialized
+func (m *MerkleTree) Serialize() []byte {
+	buf := make([]byte, 0)
+	leafCount := utils.Uint32ToBytes(uint32(len(m.Leaves)))
+	buf = append(buf, leafCount...)
+	for _, leaf := range m.Leaves {
+		buf = append(buf, leaf.Hash...)
+	}
+	return buf
+}
+
+func Deserialize(data []byte) *MerkleTree {
+	if len(data) < 4 {
+		return nil // not enough data for leaf count
+	}
+	leafCount := utils.BytesToUint32(data[:4])
+	offset := 4
+
+	expectedLength := 4 + int(leafCount)*16 // 16 bytes per MD5 hash
+	if len(data) < expectedLength {
+		return nil // data too short
 	}
 
-	tree := NewMerkleTree(data)
+	m := NewMerkleTree()
+	for i := uint32(0); i < leafCount; i++ {
+		hashBytes := data[offset : offset+16]
+		offset += 16
+		node := &MerkleNode{
+			Hash: append([]byte(nil), hashBytes...), // copy slice
+		}
+		m.Leaves = append(m.Leaves, node)
+	}
 
-	fmt.Printf("Root Hash: %x\n", tree.Root.Hash)
-
-	// Optional: print tree
-	printNode(tree.Root, 0)
+	m.build()
+	return m
 }
 
-func printNode(node *MerkleNode, level int) {
+
+// GetIter returns an iterator over the leaf hashes
+func (m *MerkleTree) GetIter() *utils.Iterator[[]*MerkleNode, []byte] {
+	return utils.NewIterator(&m.Leaves, 0, func(obj *[]*MerkleNode, pos int) ([]byte, bool) {
+		if pos >= len(*obj) {
+			return nil, false
+		}
+		return (*obj)[pos].Hash, true
+	})
+}
+
+// Print for debugging
+func (m *MerkleTree) Print() {
+	fmt.Println("Merkle Tree:")
+	printMerkle(m.Root, 0)
+}
+
+func printMerkle(node *MerkleNode, level int) {
 	if node == nil {
 		return
 	}
-	fmt.Printf("%sLevel %d: %x\n", indent(level), level, node.Hash)
-	printNode(node.Left, level+1)
-	printNode(node.Right, level+1)
+	fmt.Printf("%sHash: %x\n", indent(level), node.Hash)
+	printMerkle(node.Left, level+1)
+	printMerkle(node.Right, level+1)
 }
 
 func indent(level int) string {
-	return fmt.Sprintf("%s", string(make([]byte, level*2)))
+    s := ""
+    for i := 0; i < level; i++ {
+        s += "  "
+    }
+    return s
+}
+
+
+func TestMerkle() {
+	m := NewMerkleTree()
+	data := [][]byte{
+		[]byte("alpha"),
+		[]byte("beta"),
+		[]byte("gamma"),
+		[]byte("delta"),
+	}
+
+	for _, d := range data {
+		m.Put(d)
+	}
+
+	m.Print()
+	fmt.Println("RootHash:", m.RootHash())
+
+	iter := m.GetIter()
+	fmt.Println("Iterating leaves:")
+	for {
+		val, ok := iter.Next()
+		if !ok {
+			break
+		}
+		fmt.Printf("Leaf hash: %x\n", val)
+	}
+
+	serialized := m.Serialize()
+	fmt.Printf("Serialized leaves: %x\n", serialized)
 }
