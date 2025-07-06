@@ -6,19 +6,13 @@ import (
 )
 
 type HashMap struct {
-	buckets [][]entry
+	buckets [][]Entry
 	size    int
-}
-
-type entry struct {
-	key     string
-	value   []byte
-	deleted bool
 }
 
 func NewHashMap(size int) *HashMap {
 	return &HashMap{
-		buckets: make([][]entry, size),
+		buckets: make([][]Entry, size),
 		size:    size,
 	}
 }
@@ -31,15 +25,20 @@ func (h *HashMap) hash(key string) int {
 	return hash
 }
 
-func (h *HashMap) Put(key string, value []byte) {
+func (h *HashMap) insert(key string, value []byte, deleted bool) {
 	index := h.hash(key)
 	for i, e := range h.buckets[index] {
 		if e.key == key {
 			h.buckets[index][i].value = value
+			h.buckets[index][i].deleted = deleted
 			return
 		}
 	}
-	h.buckets[index] = append(h.buckets[index], entry{key, value, false})
+	h.buckets[index] = append(h.buckets[index], Entry{key, value, deleted})
+}
+
+func (h *HashMap) Put(key string, value []byte) {
+	h.insert(key, value, false)
 }
 
 func (h *HashMap) Get(key string) ([]byte, bool) {
@@ -53,14 +52,7 @@ func (h *HashMap) Get(key string) ([]byte, bool) {
 }
 
 func (h *HashMap) Delete(key string) {
-	index := h.hash(key)
-	for i, e := range h.buckets[index] {
-		if e.key == key {
-			h.buckets[index][i].value = []byte{}
-			h.buckets[index][i].deleted = true
-			return
-		}
-	}
+	h.insert(key, nil, true)
 
 }
 
@@ -89,28 +81,10 @@ func (h *HashMap) SerializeHM() []byte {
 	return buf
 }
 
-func (ent *entry) toBytes() []byte {
-	buf := make([]byte, 0)
-
-	keyLen := utils.Uint32ToBytes(uint32(len(ent.key)))
-	buf = append(buf, keyLen...)
-
-	if ent.deleted {
-		buf = append(buf, utils.Uint32ToBytes(^uint32(0))...)
-		buf = append(buf, []byte(ent.key)...)
-	} else {
-		valLen := utils.Uint32ToBytes(uint32(len(ent.value)))
-		buf = append(buf, valLen...)
-		buf = append(buf, []byte(ent.key)...)
-		buf = append(buf, ent.value...)
-	}
-	return buf
-}
-
 func (h *HashMap) ToBytes() []byte {
 	buf := make([]byte, 0)
 
-	entries := make([]*entry, 0)
+	entries := make([]*Entry, 0)
 
 	sizeBytes := utils.Uint32ToBytes(uint32(h.size))
 	buf = append(buf, sizeBytes...)
@@ -130,9 +104,9 @@ func (h *HashMap) ToBytes() []byte {
 	return buf
 }
 
-func (h *HashMap) GetIter() *utils.Iterator[[]*entry, []byte] {
+func (h *HashMap) GetIter() *utils.Iterator[[]*Entry, []byte] {
 
-	entries := make([]*entry, 0)
+	entries := make([]*Entry, 0)
 
 	for _, bucket := range h.buckets {
 		for _, e := range bucket {
@@ -144,7 +118,7 @@ func (h *HashMap) GetIter() *utils.Iterator[[]*entry, []byte] {
 		return entries[i].key < entries[j].key
 	})
 
-	return utils.NewIterator(&entries, 0, func(obj *[]*entry, i int) ([]byte, bool) {
+	return utils.NewIterator(&entries, 0, func(obj *[]*Entry, i int) ([]byte, bool) {
 		if i >= len(*obj) {
 			return nil, false
 		}
