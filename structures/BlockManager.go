@@ -176,3 +176,9 @@ func (bm *BlockManager) ReadBlockByOffset(filePath string, offset int) []byte {
 
 	return block
 }
+
+func (bm *BlockManager) WriteBytesByOffset(filePath string, offset int, data []byte) error {
+	blockNumber := offset / BLOCK_SIZE
+
+	return bm.WriteBlock(filePath, blockNumber, data)
+}
