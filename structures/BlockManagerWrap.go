@@ -100,3 +100,20 @@ func (bmw *BlockManagerWrap) WriteToFile(data []byte) error {
 
 	return nil
 }
+
+func (bmw *BlockManagerWrap) FlushBuffer() error {
+	if len(bmw.writeBuffer) == 0 {
+		return nil
+	}
+
+	if bmw.currentBufferUsedSpace > BLOCK_HEADER_SIZE {
+		availableBlockSpace := BLOCK_SIZE - bmw.currentBufferUsedSpace - RECORD_TYPE_SIZE
+		copy(bmw.writeBuffer[bmw.currentBufferUsedSpace:], make([]byte, availableBlockSpace+1))
+		err := bmw.blockManager.WriteToDisk(bmw.filePath, bmw.writePostion/BLOCK_SIZE, bmw.writeBuffer)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
