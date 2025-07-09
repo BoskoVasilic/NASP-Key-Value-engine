@@ -26,11 +26,11 @@ func NewBlockManagerWrap(filePath string, blockManager *BlockManager) *BlockMana
 	}
 }
 
-func (bmw *BlockManagerWrap) ReadFromFile(offset int, bytesNeeded int) []byte {
-	data := bmw.blockManager.ReadBytesByOffset(bmw.filePath, offset, bytesNeeded)
+func (bmw *BlockManagerWrap) ReadFromFile(offset int, bytesNeeded int) (int, []byte) {
+	successfullyRead, data := bmw.blockManager.ReadBytesByOffset(bmw.filePath, offset, bytesNeeded)
 	bmw.currentPosition = offset
 	bmw.currentPosition += bytesNeeded
-	return data
+	return successfullyRead, data
 }
 
 func (bmw *BlockManagerWrap) MoveFromCurrentPosition(offset int) {
@@ -41,10 +41,10 @@ func (bmw *BlockManagerWrap) SetCurrentPosition(position int) {
 	bmw.currentPosition = position
 }
 
-func (bmw *BlockManagerWrap) ReadFromCurrentPosition(bytesNeeded int) []byte {
-	data := bmw.blockManager.ReadBytesByOffset(bmw.filePath, bmw.currentPosition, bytesNeeded)
+func (bmw *BlockManagerWrap) ReadFromCurrentPosition(bytesNeeded int) (int, []byte) {
+	successfullyRead, data := bmw.blockManager.ReadBytesByOffset(bmw.filePath, bmw.currentPosition, bytesNeeded)
 	bmw.currentPosition += bytesNeeded
-	return data
+	return successfullyRead, data
 }
 
 func (bmw *BlockManagerWrap) WriteToFile(data []byte) error {
@@ -96,6 +96,23 @@ func (bmw *BlockManagerWrap) WriteToFile(data []byte) error {
 		bmw.writeBuffer = bmw.writeBuffer[:0]
 		bmw.writeBuffer = newBlock
 		bmw.currentBufferUsedSpace = BLOCK_HEADER_SIZE
+	}
+
+	return nil
+}
+
+func (bmw *BlockManagerWrap) FlushBuffer() error {
+	if len(bmw.writeBuffer) == 0 {
+		return nil
+	}
+
+	if bmw.currentBufferUsedSpace > BLOCK_HEADER_SIZE {
+		availableBlockSpace := BLOCK_SIZE - bmw.currentBufferUsedSpace - RECORD_TYPE_SIZE
+		copy(bmw.writeBuffer[bmw.currentBufferUsedSpace:], make([]byte, availableBlockSpace+1))
+		err := bmw.blockManager.WriteToDisk(bmw.filePath, bmw.writePostion/BLOCK_SIZE, bmw.writeBuffer)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil

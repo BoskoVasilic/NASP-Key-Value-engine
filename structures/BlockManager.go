@@ -2,6 +2,7 @@ package structures
 
 import (
 	"encoding/binary"
+	"io"
 	"log"
 	"math"
 	"os"
@@ -49,13 +50,9 @@ func closeFile(file *os.File) {
 	}
 }
 
-func (bm *BlockManager) ReadBlock(filePath string, blockNumber int) []byte {
-
-	// check if block is in BufferPool
-	// if yes, return the block from BufferPool
-
+func (bm *BlockManager) ReadBlock(filePath string, blockNumber int) ([]byte, error) {
 	if data, ok := bm.cache.Get(filePath, uint32(blockNumber*BLOCK_SIZE)); ok {
-		return data
+		return data, nil
 	}
 
 	file := openFile(filePath, os.O_RDONLY)
@@ -70,17 +67,16 @@ func (bm *BlockManager) ReadBlock(filePath string, blockNumber int) []byte {
 
 	_, err = file.Read(data)
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("Error reading file: %v", err)
 	}
 
-	// add block to BufferPool
 	bm.cache.Put(filePath, uint32(blockNumber*BLOCK_SIZE), data)
 
-	return data
+	return data, err
 }
 
 func (bm *BlockManager) WriteBlock(filePath string, blockNumber int, data []byte) error {
-	block := bm.ReadBlock(filePath, blockNumber)
+	block, _ := bm.ReadBlock(filePath, blockNumber)
 
 	currentLength := bm.GetCurrentLength(block)
 	remainingSpace := BLOCK_SIZE - currentLength - RECORD_TYPE_SIZE
@@ -189,27 +185,40 @@ func (bm *BlockManager) WriteToDisk(filePath string, blockNumber int, block []by
 	return nil
 }
 
-func (bm *BlockManager) ReadBytesByOffset(filePath string, offset int, bytesNeeded int) []byte {
+func (bm *BlockManager) ReadBytesByOffset(filePath string, offset int, bytesNeeded int) (int, []byte) {
 	blockNumber := offset / BLOCK_SIZE
 	startInBlock := offset % BLOCK_SIZE
 
 	allBlocksToReturn := make([]byte, 0)
 	runWhile := bytesNeeded
 
+	successfullyRead := 0
+
 	for runWhile > 0 {
-		block := bm.ReadBlock(filePath, blockNumber)
+		block, err := bm.ReadBlock(filePath, blockNumber)
+		if err != nil {
+			if err == io.EOF {
+				successfullyRead = len(allBlocksToReturn[startInBlock:])
+				allBlocksToReturn = append(allBlocksToReturn, make([]byte, bytesNeeded-successfullyRead)...)
+				break
+			}
+		}
 		blockNumber++
 		allBlocksToReturn = append(allBlocksToReturn, block...)
 		runWhile -= BLOCK_SIZE
 	}
 
-	return allBlocksToReturn[startInBlock : startInBlock+bytesNeeded]
+	if successfullyRead == 0 {
+		successfullyRead = bytesNeeded
+	}
+
+	return successfullyRead, allBlocksToReturn[startInBlock : startInBlock+bytesNeeded]
 }
 
 func (bm *BlockManager) ReadBlockByOffset(filePath string, offset int) []byte {
 	blockNumber := offset / BLOCK_SIZE
 
-	block := bm.ReadBlock(filePath, blockNumber)
+	block, _ := bm.ReadBlock(filePath, blockNumber)
 
 	return block
 }
