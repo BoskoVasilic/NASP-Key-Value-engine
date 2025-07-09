@@ -26,11 +26,11 @@ func NewBlockManagerWrap(filePath string, blockManager *BlockManager) *BlockMana
 	}
 }
 
-func (bmw *BlockManagerWrap) ReadFromFile(offset int, bytesNeeded int) []byte {
-	data := bmw.blockManager.ReadBytesByOffset(bmw.filePath, offset, bytesNeeded)
+func (bmw *BlockManagerWrap) ReadFromFile(offset int, bytesNeeded int) (int, []byte) {
+	successfullyRead, data := bmw.blockManager.ReadBytesByOffset(bmw.filePath, offset, bytesNeeded)
 	bmw.currentPosition = offset
 	bmw.currentPosition += bytesNeeded
-	return data
+	return successfullyRead, data
 }
 
 func (bmw *BlockManagerWrap) MoveFromCurrentPosition(offset int) {
@@ -41,10 +41,10 @@ func (bmw *BlockManagerWrap) SetCurrentPosition(position int) {
 	bmw.currentPosition = position
 }
 
-func (bmw *BlockManagerWrap) ReadFromCurrentPosition(bytesNeeded int) []byte {
-	data := bmw.blockManager.ReadBytesByOffset(bmw.filePath, bmw.currentPosition, bytesNeeded)
+func (bmw *BlockManagerWrap) ReadFromCurrentPosition(bytesNeeded int) (int, []byte) {
+	successfullyRead, data := bmw.blockManager.ReadBytesByOffset(bmw.filePath, bmw.currentPosition, bytesNeeded)
 	bmw.currentPosition += bytesNeeded
-	return data
+	return successfullyRead, data
 }
 
 func (bmw *BlockManagerWrap) WriteToFile(data []byte) error {
