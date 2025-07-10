@@ -78,11 +78,7 @@ func (s *SkipList) insert(key string, value []byte, tombstone bool) error {
 		path[s.currentHeight].data.deleted = tombstone
 		return err
 	}
-	newData := &Entry{
-		key:     key,
-		value:   value,
-		deleted: tombstone,
-	}
+	newData := NewEntry(key, value, tombstone)
 	newNode := &Node{
 		next: nil,
 		down: nil,

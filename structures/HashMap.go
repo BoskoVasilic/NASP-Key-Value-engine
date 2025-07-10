@@ -34,7 +34,7 @@ func (h *HashMap) insert(key string, value []byte, deleted bool) {
 			return
 		}
 	}
-	h.buckets[index] = append(h.buckets[index], Entry{key, value, deleted})
+	h.buckets[index] = append(h.buckets[index], *NewEntry(key, value, deleted))
 }
 
 func (h *HashMap) Put(key string, value []byte) {
