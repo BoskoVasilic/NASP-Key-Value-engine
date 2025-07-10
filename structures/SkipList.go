@@ -152,7 +152,7 @@ func (s *SkipList) Print() {
 	for curentNode != nil {
 		printNode := curentNode
 		for printNode != nil {
-			fmt.Print(printNode.data.key, " -> ")
+			fmt.Print(printNode.data.key, ":", printNode.data.value, "->")
 			printNode = printNode.next
 		}
 		fmt.Println()
@@ -164,7 +164,9 @@ func (s *SkipList) Delete(key string) error {
 	err := s.insert(key, nil, true)
 	return err
 }
+
 func (s *SkipList) GetIter() *utils.Iterator[Node, *Node, *Entry] {
+
 	curentNode := s.head
 	for curentNode.down != nil {
 		curentNode = curentNode.down
