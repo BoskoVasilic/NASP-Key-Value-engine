@@ -7,32 +7,35 @@ import (
 	"os"
 )
 
-type SSTable[T any] struct {
-	Podaci          *utils.Iterator[T, *Entry] // Iterator over the data in the SSTable
-	Filter          *BloomFilter
-	numberOfEnterys int
-	oneFile         bool // Indicates if the SSTable is stored in a single file
-	SumeeryIndex    uint64
-	BlockManager    *BlockManager
+type SSTable[T any, H any] struct {
+	Podaci           *utils.Iterator[T, H, *Entry] // Iterator over the data in the SSTable
+	Filter           *BloomFilter
+	numberOfEnterys  int
+	oneFile          bool // Indicates if the SSTable is stored in a single file
+	SumeeryIndex     uint64
+	BlockManager     *BlockManager
+	globalDictionary *GlobalDictionary
 }
 
-func NewSSTable[T any](podaci *utils.Iterator[T, *Entry], NumberOfEnyerys int, SumeeryIndex uint64, oneFile bool, BlocMenager *BlockManager) *SSTable[T] {
-	return &SSTable[T]{
-		Podaci:          podaci,
-		Filter:          NewBloomFilterWithParams(NumberOfEnyerys, 0.01), // Example parameters for the Bloom filter
-		SumeeryIndex:    SumeeryIndex,
-		numberOfEnterys: NumberOfEnyerys,
-		oneFile:         oneFile,
-		BlockManager:    BlocMenager,
+func NewSSTable[T any, H any](podaci *utils.Iterator[T, H, *Entry], NumberOfEnyerys int, SumeeryIndex uint64, oneFile bool, BlocMenager *BlockManager, dictinery *GlobalDictionary) *SSTable[T, H] {
+	return &SSTable[T, H]{
+		Podaci:           podaci,
+		Filter:           NewBloomFilterWithParams(NumberOfEnyerys, 0.01), // Example parameters for the Bloom filter
+		SumeeryIndex:     SumeeryIndex,
+		numberOfEnterys:  NumberOfEnyerys,
+		oneFile:          oneFile,
+		BlockManager:     BlocMenager,
+		globalDictionary: dictinery,
 	}
 }
 
-func (s *SSTable[T]) GenerateSSTabel() {
+func (s *SSTable[T, H]) GenerateSSTabel() {
 	// Create a file to store the SSTable data
 
-	// Ovde cu da radim pretvaranje
-	podatak, ok := s.Podaci.Next()
-	firstKey := "NoKey"
+	// Ovde cu da radim pretvaranje)
+	data := AddItems(s.globalDictionary, s.Podaci)
+	podatak, ok := data.Next()
+	firstKey := -1 // Initialize firstKey to -1 to indicate it hasn't been set yet
 	IndexBlock := make([]byte, 0, 0)
 	IndexSummery := make([]byte, 0, 0)
 	offset := uint64(0)
@@ -44,15 +47,14 @@ func (s *SSTable[T]) GenerateSSTabel() {
 		if podatak == nil {
 			break
 		}
-		s.Filter.Put([]byte(podatak.GetKey()))
+		s.Filter.Put(utils.Uint64ToBytes(podatak.GetKey()))
 		key := podatak.GetKey()
-		if firstKey == "NoKey" {
-			firstKey = key
+		if firstKey == -1 {
+			firstKey = int(podatak.GetKey()) // Set firstKey to the first key encountered
 		}
 		//Create an block
 		IndexBlockEntry := make([]byte, 0)
-		IndexBlockEntry = binary.AppendUvarint(IndexBlockEntry, uint64(len(key)))
-		IndexBlockEntry = append(IndexBlockEntry, []byte(key)...)
+		IndexBlockEntry = binary.AppendUvarint(IndexBlockEntry, key)
 		IndexBlockEntry = binary.AppendUvarint(IndexBlockEntry, uint64(offset))
 		fmt.Println(IndexBlockEntry)
 		index += 1
@@ -62,26 +64,22 @@ func (s *SSTable[T]) GenerateSSTabel() {
 		if index%int(s.SumeeryIndex) == 0 {
 			// Create an index entry
 			indexEntry := make([]byte, 0)
-			indexEntry = binary.AppendUvarint(indexEntry, uint64(len(firstKey)))
-			indexEntry = append(indexEntry, []byte(firstKey)...)
-			indexEntry = binary.AppendUvarint(indexEntry, uint64(len(lastKey)))
-			indexEntry = append(indexEntry, []byte(key)...)
+			indexEntry = binary.AppendUvarint(indexEntry, uint64(firstKey))
+			indexEntry = binary.AppendUvarint(indexEntry, key)
 			indexEntry = binary.AppendUvarint(indexEntry, uint64(indexoffset))
 			IndexSummery = append(IndexSummery, indexEntry...)
 			indexoffset = uint64(len(IndexBlock))
-			firstKey = "NoKey" // Reset firstKey for the next block
+			firstKey = -1 // Reset firstKey for the next block
 		}
-		podatak, ok = s.Podaci.Next()
+		podatak, ok = data.Next()
 		if podatak != nil {
 			lastKey = podatak.GetKey()
 		}
-		if !ok && firstKey != "NoKey" {
+		if !ok && firstKey != -1 {
 			// If we reach the end of the data and firstKey is still set, add the last entry
 			indexEntryS := make([]byte, 0)
-			indexEntryS = binary.AppendUvarint(indexEntryS, uint64(len(firstKey)))
-			indexEntryS = append(indexEntryS, []byte(firstKey)...)
-			indexEntryS = binary.AppendUvarint(indexEntryS, uint64(len(lastKey)))
-			indexEntryS = append(indexEntryS, []byte(lastKey)...)
+			indexEntryS = binary.AppendUvarint(indexEntryS, uint64(firstKey))
+			indexEntryS = binary.AppendUvarint(indexEntryS, uint64(lastKey))
 			indexEntryS = binary.AppendUvarint(indexEntryS, uint64(indexoffset))
 			IndexSummery = append(IndexSummery, indexEntryS...)
 		}
@@ -91,30 +89,26 @@ func (s *SSTable[T]) GenerateSSTabel() {
 	// Write the data block to the file
 	if s.oneFile {
 		file := NewBlockManagerWrap("SSTable.bin", s.BlockManager)
-		defer file.Close()
+		defer file.FlushBuffer()
 		offsetFile := uint64(0)
 		// Write in file
-		_, err = file.Write([]byte{1})
-		n, err := file.Write(binary.AppendUvarint(nil, uint64(len(firtKEyEver))))
+		file.WriteToFile([]byte{1})
+		n, _ := file.WriteToFile(binary.AppendUvarint(nil, uint64(firtKEyEver)))
 		offsetFile += uint64(n)
-		n, err = file.Write([]byte(firtKEyEver))
-		offsetFile += uint64(n)
-		n, err = file.Write(binary.AppendUvarint(nil, uint64(len(lastKey))))
-		offsetFile += uint64(n)
-		n, err = file.Write([]byte(lastKey))
+		n, _ = file.WriteToFile(binary.AppendUvarint(nil, uint64(lastKey)))
 		offsetFile += uint64(n)
 		BFilter := s.Filter.SerializeBloomF()
 		offsetFile += uint64(8 * 4)
 		offsetFile += uint64(1)
-		_, err = file.Write(utils.Uint64ToBytes(offsetFile))
-		_, err = file.Write(utils.Uint64ToBytes(offsetFile + uint64(len(BFilter))))
-		_, err = file.Write(utils.Uint64ToBytes(offsetFile + uint64(len(BFilter)) + uint64(len(IndexSummery))))
-		_, err = file.Write(utils.Uint64ToBytes(offsetFile + uint64(len(BFilter)) + uint64(len(IndexSummery)) + uint64(len(IndexBlock))))
-		_, err = file.Write(BFilter)
+		file.WriteToFile(utils.Uint64ToBytes(offsetFile))
+		file.WriteToFile(utils.Uint64ToBytes(offsetFile + uint64(len(BFilter))))
+		file.WriteToFile(utils.Uint64ToBytes(offsetFile + uint64(len(BFilter)) + uint64(len(IndexSummery))))
+		file.WriteToFile(utils.Uint64ToBytes(offsetFile + uint64(len(BFilter)) + uint64(len(IndexSummery)) + uint64(len(IndexBlock))))
+		//file.WriteToFile(BFilter)
 		fmt.Println("Index Sumery:", IndexSummery)
 		fmt.Println("Index Block:", IndexBlock)
-		_, err = file.Write(IndexSummery)
-		_, err = file.Write(IndexBlock)
+		file.WriteToFile(IndexSummery)
+		file.WriteToFile(IndexBlock)
 		// Placeholder for the data block
 		s.Podaci.Reset()
 		for true {
@@ -122,12 +116,11 @@ func (s *SSTable[T]) GenerateSSTabel() {
 			if podatak == nil {
 				break
 			}
-			file.Write(podatak.toBytes())
+			file.WriteToFile(podatak.toBytes())
 		}
-		file.Write([]byte{0, 0, 0, 0, 0, 0, 0, 0})
 	} else {
 		// Handle the case where oneFile is false (if needed)
-		file, err := os.Create("SSTableTOC.bin")
+		/*file, err := os.Create("SSTableTOC.bin")
 		if err != nil {
 			panic(err)
 		}
@@ -184,108 +177,117 @@ func (s *SSTable[T]) GenerateSSTabel() {
 				break
 			}
 			fileData.Write(podatak.toBytes())
-		}
+		}*/
 	}
 	// Reset the iterator to the beginning
 }
-func ReadSStabel(pathtoToc string, key string) {
-	file, err := os.Open(pathtoToc)
-	if err != nil {
-		panic(err)
-	}
-	defer file.Close()
+func WriteDataBlockCompresed[T any, H any](file *BlockManagerWrap, itter *utils.Iterator[T, H, *ExportEntry]) {
 
+}
+func WriteDataBlock() {
+
+}
+func ReadSStabel(pathtoToc string, key string, BlockManager *BlockManager, globalDictionary *GlobalDictionary) {
+
+	file := NewBlockManagerWrap(pathtoToc, BlockManager)
 	// Read the first byte to determine if it's a single file or multiple files
-	var fileType byte
-	err = binary.Read(file, binary.LittleEndian, &fileType)
-	if err != nil {
-		panic(err)
+	// Read the first byte to determine if it's a single file or multiple files
+	_, fileTypeData := file.ReadFromCurrentPosition(1)
+	fmt.Println("File Type Data:", fileTypeData)
+	i := 0
+	for i < 110 {
+		n, fileTypeData := file.ReadFromCurrentPosition(1)
+		if n == 0 {
+			break // End of file reached
+		}
+		fmt.Println("File Type Data:", fileTypeData, " ")
+		i++
 	}
-
-	if fileType == 1 {
+	if fileTypeData[0] == 1 {
 		// Handle single file case
 		fmt.Println("Single file SSTable detected.")
+		/*
+			data := make([]byte, 8)
+			_, err := file.Read(data)
+			if err != nil {
+				panic(err)
+			}
+			firstKeyLength, n := binary.Uvarint(data)
+			file.Seek(int64(n)-8, 1) // Move the file pointer to the next position
+			fmt.Println("First Key Length:", firstKeyLength)
+			data = make([]byte, firstKeyLength)
+			file.Read(data)
+			firstKey := string(data)
+			fmt.Println("First Key:", firstKey)
+			data = make([]byte, 8)
+			_, err = file.Read(data)
+			if err != nil {
+				panic(err)
+			}
+			lastKeyLength, n := binary.Uvarint(data)
+			file.Seek(int64(n)-8, 1) // Move the file pointer to the next position
+			fmt.Println("Last Key Length:", lastKeyLength)
+			data = make([]byte, lastKeyLength)
+			file.Read(data)
+			lastKey := string(data)
+			fmt.Println("Last Key:", lastKey)
+			// Read the Bloom filter
+			data = make([]byte, 8)
+			_, err = file.Read(data)
+			if err != nil {
+				panic(err)
+			}
+			OffsetBlumFilte := utils.BytesToUint64(data) // Move the file pointer to the next position
+			fmt.Println("Offset Bloom Filter:", OffsetBlumFilte)
+			data = make([]byte, 8)
+			_, err = file.Read(data)
+			if err != nil {
+				panic(err)
+			}
+			OffsetIndexSummery := utils.BytesToUint64(data) // Move the file pointer to the next position
+			fmt.Println("Offset Index Summery:", OffsetIndexSummery)
+			data = make([]byte, 8)
+			_, err = file.Read(data)
+			if err != nil {
+				panic(err)
+			}
+			OffsetIndex := utils.BytesToUint64(data) // Move the file pointer to the next position
+			fmt.Println("Offset Index:", OffsetIndex)
+			data = make([]byte, 8)
+			_, err = file.Read(data)
+			if err != nil {
+				panic(err)
+			}
+			OffsetData := utils.BytesToUint64(data) // Move the file pointer to the next position
+			fmt.Println("Offset Data:", OffsetData)
+			// Read the Bloom filter data
+			BytesBlum := make([]byte, OffsetIndexSummery-OffsetBlumFilte)
+			file.Read(BytesBlum)
+			blumFilter := DeserializeBloomF(BytesBlum)
+			found := blumFilter.Check([]byte(key))
+			fmt.Println("File found", found)
+			//Loading Index Summery
+			file.Seek(int64(OffsetIndexSummery), 0) // Move to the index summary offset
+			FirstKey, SecondKey, IndexOffset := GetInexSumeeryEntry(file)
+			for key > SecondKey {
+				// Read the next index summary entry
+				FirstKey, SecondKey, IndexOffset = GetInexSumeeryEntry(file)
+				fmt.Println("First Key:", FirstKey, "Second Key:", SecondKey, "Index Offset:", IndexOffset)
+			}
+			if key < FirstKey {
+				fmt.Println("Key is less than the first key in the index summary.")
+			}
+			// Read the index block
+			fmt.Println(IndexOffset)
 
-		data := make([]byte, 8)
-		_, err := file.Read(data)
-		if err != nil {
-			panic(err)
-		}
-		firstKeyLength, n := binary.Uvarint(data)
-		file.Seek(int64(n)-8, 1) // Move the file pointer to the next position
-		fmt.Println("First Key Length:", firstKeyLength)
-		data = make([]byte, firstKeyLength)
-		file.Read(data)
-		firstKey := string(data)
-		fmt.Println("First Key:", firstKey)
-		data = make([]byte, 8)
-		_, err = file.Read(data)
-		if err != nil {
-			panic(err)
-		}
-		lastKeyLength, n := binary.Uvarint(data)
-		file.Seek(int64(n)-8, 1) // Move the file pointer to the next position
-		fmt.Println("Last Key Length:", lastKeyLength)
-		data = make([]byte, lastKeyLength)
-		file.Read(data)
-		lastKey := string(data)
-		fmt.Println("Last Key:", lastKey)
-		// Read the Bloom filter
-		data = make([]byte, 8)
-		_, err = file.Read(data)
-		if err != nil {
-			panic(err)
-		}
-		OffsetBlumFilte := utils.BytesToUint64(data) // Move the file pointer to the next position
-		fmt.Println("Offset Bloom Filter:", OffsetBlumFilte)
-		data = make([]byte, 8)
-		_, err = file.Read(data)
-		if err != nil {
-			panic(err)
-		}
-		OffsetIndexSummery := utils.BytesToUint64(data) // Move the file pointer to the next position
-		fmt.Println("Offset Index Summery:", OffsetIndexSummery)
-		data = make([]byte, 8)
-		_, err = file.Read(data)
-		if err != nil {
-			panic(err)
-		}
-		OffsetIndex := utils.BytesToUint64(data) // Move the file pointer to the next position
-		fmt.Println("Offset Index:", OffsetIndex)
-		data = make([]byte, 8)
-		_, err = file.Read(data)
-		if err != nil {
-			panic(err)
-		}
-		OffsetData := utils.BytesToUint64(data) // Move the file pointer to the next position
-		fmt.Println("Offset Data:", OffsetData)
-		// Read the Bloom filter data
-		BytesBlum := make([]byte, OffsetIndexSummery-OffsetBlumFilte)
-		file.Read(BytesBlum)
-		blumFilter := DeserializeBloomF(BytesBlum)
-		found := blumFilter.Check([]byte(key))
-		fmt.Println("File found", found)
-		//Loading Index Summery
-		file.Seek(int64(OffsetIndexSummery), 0) // Move to the index summary offset
-		FirstKey, SecondKey, IndexOffset := GetInexSumeeryEntry(file)
-		for key > SecondKey {
-			// Read the next index summary entry
-			FirstKey, SecondKey, IndexOffset = GetInexSumeeryEntry(file)
-			fmt.Println("First Key:", FirstKey, "Second Key:", SecondKey, "Index Offset:", IndexOffset)
-		}
-		if key < FirstKey {
-			fmt.Println("Key is less than the first key in the index summary.")
-		}
-		// Read the index block
-		fmt.Println(IndexOffset)
+			KeyData, DataOFfset := GetIndexBlockEntry(file)
+			KeyData, DataOFfset = GetIndexBlockEntry(file)
+			KeyData, DataOFfset = GetIndexBlockEntry(file)
+			KeyData, DataOFfset = GetIndexBlockEntry(file)
+			KeyData, DataOFfset = GetIndexBlockEntry(file)
 
-		KeyData, DataOFfset := GetIndexBlockEntry(file)
-		KeyData, DataOFfset = GetIndexBlockEntry(file)
-		KeyData, DataOFfset = GetIndexBlockEntry(file)
-		KeyData, DataOFfset = GetIndexBlockEntry(file)
-		KeyData, DataOFfset = GetIndexBlockEntry(file)
-
-		fmt.Println("Key Data:", KeyData, "Data Offset:", DataOFfset)
+			fmt.Println("Key Data:", KeyData, "Data Offset:", DataOFfset)
+		*/
 	} else {
 		// Handle multiple files case
 		fmt.Println("Multiple files SSTable detected.")

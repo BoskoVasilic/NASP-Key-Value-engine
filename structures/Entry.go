@@ -1,9 +1,8 @@
 package structures
 
 import (
-	utils "KVengine/utils"
-	"time"
 	"encoding/binary"
+	"time"
 )
 
 type Entry struct {

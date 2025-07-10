@@ -7,7 +7,7 @@ import (
 
 type GlobalDictionary struct {
 	SkipList *SkipList         // SkipList is a data structure that allows for fast search, insertion, and deletion
-	Size     uint64            // Size is the number of entries in the dictionary
+	Size     uint64            // Size is the number of entries in the dictionaryMerge branch 'SSTable' into Develop
 	file     *BlockManagerWrap // BlockManager is responsible for managing blocks of data in the file
 }
 
@@ -20,6 +20,7 @@ func NewGlobalDictionary(filePath string, blocMenager *BlockManager) *GlobalDict
 }
 func AddItems[T any](globalDictionary *GlobalDictionary, itterator *utils.Iterator[T, *Entry]) *utils.Iterator[[]*ExportEntry, *ExportEntry] {
 	// Treba da postoji flush opcija
+	defer globalDictionary.file.FlushBuffer()
 	list := NewListWithIterator[ExportEntry]()
 	for true {
 		entry, ok := itterator.Next()

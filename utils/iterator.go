@@ -1,6 +1,5 @@
 package utils
 
-
 type Iterator[T any, H any, V any] struct {
 	obj            *T
 	extractAndMove func(*T, *H) (V, bool)
@@ -14,7 +13,6 @@ func NewIterator[T any, H any, V any](obj *T, state *H, extract func(*T, *H) (V,
 		extractAndMove: extract,
 
 		state: state,
-
 	}
 }
 
@@ -25,8 +23,4 @@ func (it *Iterator[T, H, V]) Next() (V, bool) {
 		return zero, false
 	}
 	return val, true
-}
-func (it *Iterator[T, V]) Reset() {
-	it.obj = &it.first
-	it.pos = 0
 }
