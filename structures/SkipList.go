@@ -38,14 +38,20 @@ func NewSkipList() *SkipList {
 		head: &Node{
 			next: nil,
 			down: nil,
-			data: nil,
+			data: &Entry{
+				key:     "",
+				value:   nil,
+				deleted: false,
+			},
 		},
 	}
 }
 
 func (s *SkipList) findPath(key string) (bool, []*Node, error) {
+	fmt.Println("Finding " + key)
 	path := make([]*Node, s.currentHeight+1)
 	currentNode := s.head
+	fmt.Println(s)
 	height := 0
 	for currentNode.data.key != key {
 		if currentNode.next != nil && currentNode.next.data.key <= key {
@@ -67,8 +73,8 @@ func (s *SkipList) findPath(key string) (bool, []*Node, error) {
 
 	return true, path, nil
 }
-func (s *SkipList) Put(key string, value []byte, tombstone bool) error {
-	err := s.insert(key, value, tombstone)
+func (s *SkipList) Put(key string, value []byte) error {
+	err := s.insert(key, value, false)
 	return err
 }
 func (s *SkipList) insert(key string, value []byte, tombstone bool) error {
@@ -107,7 +113,11 @@ func (s *SkipList) insert(key string, value []byte, tombstone bool) error {
 		headNode := &Node{
 			next: newNode,
 			down: s.head,
-			data: nil,
+			data: &Entry{
+				key:     "",
+				value:   nil,
+				deleted: false,
+			},
 		}
 		s.head = headNode
 	}
@@ -154,18 +164,20 @@ func (s *SkipList) Delete(key string) error {
 	err := s.insert(key, nil, true)
 	return err
 }
-func (s *SkipList) GetIter() *utils.Iterator[Node, *utils.ExportEntry] {
+func (s *SkipList) GetIter() *utils.Iterator[Node, *Node, *Entry] {
 	curentNode := s.head
 	for curentNode.down != nil {
 		curentNode = curentNode.down
 	}
 	curentNode = curentNode.next
-	return utils.NewIterator(curentNode, 0, func(obj *Node, pos int) (*utils.ExportEntry, bool) {
-		if obj == nil {
+	currentNodePointer := &curentNode
+	return utils.NewIterator(curentNode, currentNodePointer, func(obj *Node, current **Node) (*Entry, bool) {
+		if *current == nil {
 			return nil, false
 		}
-		Entery := utils.NewExportEntry(obj.data.key, uint64(len(obj.data.value)), obj.data.value)
-		obj = obj.next
-		return Entery, true
+
+		data := (*current).data
+		*current = (*current).next
+		return data, true
 	})
 }
