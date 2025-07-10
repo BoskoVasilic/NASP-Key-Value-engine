@@ -1,5 +1,9 @@
 package utils
 
+type Iter interface {
+	Next()
+}
+
 type Iterator[T any, H any, V any] struct {
 	obj            *T
 	extractAndMove func(*T, *H) (V, bool)
