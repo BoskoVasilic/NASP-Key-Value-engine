@@ -1,13 +1,24 @@
 package structures
 
 import (
+	utils "KVengine/utils"
+	"time"
 	"encoding/binary"
 )
 
 type Entry struct {
 	key     string
 	value   []byte
+	time    int64
 	deleted bool
+}
+
+func NewEntry(key string, value []byte, deleted bool) *Entry {
+	return &Entry{key, value, time.Now().UnixNano(), deleted}
+}
+
+func NewEntryWithTime(key string, value []byte, time int64, deleted bool) *Entry {
+	return &Entry{key, value, time, deleted}
 }
 
 func (e Entry) GetKey() string {

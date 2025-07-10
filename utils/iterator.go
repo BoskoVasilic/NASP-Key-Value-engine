@@ -1,28 +1,29 @@
 package utils
 
-type Iterator[T any, V any] struct {
-	first   T
-	obj     *T
-	extract func(*T, int) (V, bool)
-	pos     int
+
+type Iterator[T any, H any, V any] struct {
+	obj            *T
+	extractAndMove func(*T, *H) (V, bool)
+	state          *H
 }
 
-func NewIterator[T any, V any](obj *T, pos int, extract func(*T, int) (V, bool)) *Iterator[T, V] {
-	return &Iterator[T, V]{
-		first:   *obj,
-		obj:     obj,
-		extract: extract,
-		pos:     pos,
+func NewIterator[T any, H any, V any](obj *T, state *H, extract func(*T, *H) (V, bool)) *Iterator[T, H, V] {
+
+	return &Iterator[T, H, V]{
+		obj:            obj,
+		extractAndMove: extract,
+
+		state: state,
+
 	}
 }
 
-func (it *Iterator[T, V]) Next() (V, bool) {
+func (it *Iterator[T, H, V]) Next() (V, bool) {
 	var zero V
-	val, success := it.extract(it.obj, it.pos)
+	val, success := it.extractAndMove(it.obj, it.state)
 	if !success {
 		return zero, false
 	}
-	it.pos++
 	return val, true
 }
 func (it *Iterator[T, V]) Reset() {

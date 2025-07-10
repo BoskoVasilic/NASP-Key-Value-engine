@@ -48,9 +48,10 @@ func NewSkipList() *SkipList {
 }
 
 func (s *SkipList) findPath(key string) (bool, []*Node, error) {
+	fmt.Println("Finding " + key)
 	path := make([]*Node, s.currentHeight+1)
 	currentNode := s.head
-	fmt.Print("Finding key" + key + " in SkipList: ")
+	fmt.Println(s)
 	height := 0
 	for currentNode.data.key != key {
 		if currentNode.next != nil && currentNode.next.data.key <= key {
@@ -72,8 +73,8 @@ func (s *SkipList) findPath(key string) (bool, []*Node, error) {
 
 	return true, path, nil
 }
-func (s *SkipList) Put(key string, value []byte, tombstone bool) error {
-	err := s.insert(key, value, tombstone)
+func (s *SkipList) Put(key string, value []byte) error {
+	err := s.insert(key, value, false)
 	return err
 }
 func (s *SkipList) insert(key string, value []byte, tombstone bool) error {
@@ -83,11 +84,7 @@ func (s *SkipList) insert(key string, value []byte, tombstone bool) error {
 		path[s.currentHeight].data.deleted = tombstone
 		return err
 	}
-	newData := &Entry{
-		key:     key,
-		value:   value,
-		deleted: tombstone,
-	}
+	newData := NewEntry(key, value, tombstone)
 	newNode := &Node{
 		next: nil,
 		down: nil,
@@ -167,19 +164,22 @@ func (s *SkipList) Delete(key string) error {
 	err := s.insert(key, nil, true)
 	return err
 }
-func (s *SkipList) GetIter() *utils.Iterator[*Node, *Entry] {
+
+func (s *SkipList) GetIter() *utils.Iterator[Node, *Node, *Entry] {
+
 	curentNode := s.head
 	for curentNode.down != nil {
 		curentNode = curentNode.down
 	}
 	curentNode = curentNode.next
-	return utils.NewIterator(&curentNode, 0, func(obj **Node, pos int) (*Entry, bool) {
-		if *obj == nil {
+	currentNodePointer := &curentNode
+	return utils.NewIterator(curentNode, currentNodePointer, func(obj *Node, current **Node) (*Entry, bool) {
+		if *current == nil {
 			return nil, false
 		}
-		Entery := (*obj).data
-		*obj = (*obj).next
-		pos++
-		return Entery, true
+
+		data := (*current).data
+		*current = (*current).next
+		return data, true
 	})
 }

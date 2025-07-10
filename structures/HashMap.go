@@ -34,21 +34,22 @@ func (h *HashMap) insert(key string, value []byte, deleted bool) {
 			return
 		}
 	}
-	h.buckets[index] = append(h.buckets[index], Entry{key, value, deleted})
+	h.buckets[index] = append(h.buckets[index], *NewEntry(key, value, deleted))
 }
 
 func (h *HashMap) Put(key string, value []byte) {
 	h.insert(key, value, false)
 }
 
-func (h *HashMap) Get(key string) ([]byte, bool) {
+func (h *HashMap) Get(key string) (Entry, bool) {
+	var zero Entry
 	index := h.hash(key)
 	for _, e := range h.buckets[index] {
 		if e.key == key {
-			return e.value, true
+			return e, true
 		}
 	}
-	return nil, false
+	return zero, false
 }
 
 func (h *HashMap) Delete(key string) {
@@ -104,7 +105,7 @@ func (h *HashMap) ToBytes() []byte {
 	return buf
 }
 
-func (h *HashMap) GetIter() *utils.Iterator[[]*Entry, []byte] {
+func (h *HashMap) GetIter() *utils.Iterator[[]*Entry, int, *Entry] {
 
 	entries := make([]*Entry, 0)
 
@@ -117,12 +118,15 @@ func (h *HashMap) GetIter() *utils.Iterator[[]*Entry, []byte] {
 	sort.Slice(entries, func(i, j int) bool {
 		return entries[i].key < entries[j].key
 	})
-
-	return utils.NewIterator(&entries, 0, func(obj *[]*Entry, i int) ([]byte, bool) {
-		if i >= len(*obj) {
+	pos := int(0)
+	posPtr := &pos
+	return utils.NewIterator(&entries, posPtr, func(obj *[]*Entry, i *int) (*Entry, bool) {
+		if *i >= len(*obj) {
 			return nil, false
 		}
-		return (*obj)[i].toBytes(), true
+		data := (*obj)[*i]
+		*i++
+		return data, true
 
 	})
 
