@@ -2,6 +2,7 @@ package structures
 
 import (
 	"encoding/binary"
+	"fmt"
 	"math"
 )
 
@@ -68,10 +69,9 @@ func (bmw *BlockManagerWrap) WriteToFile(data []byte) (int, error) {
 	if len(bmw.writeBuffer) == 0 {
 		switch bmw.writePosition {
 		case -1:
+			fmt.Println("Creating new file with initial block")
 			bmw.writePosition = 0
-			bmw.writeBuffer = bmw.blockManager.ReadBlockByOffset(bmw.filePath, bmw.writePosition)
-			bmw.currentBufferUsedSpace = bmw.blockManager.GetCurrentLength(bmw.writeBuffer)
-		case 0:
+			bmw.fileEnd += 1
 			newBlock := make([]byte, BLOCK_SIZE)
 			binary.LittleEndian.PutUint32(newBlock[BLOCK_SIZE-BLOCK_HEADER_SIZE:], uint32(0))
 			bmw.writeBuffer = newBlock
@@ -138,12 +138,14 @@ func (bmw *BlockManagerWrap) FlushBuffer(isFromOverwrite bool) error {
 	}
 
 	if !bmw.isBufferFlushed {
-		if !isFromOverwrite {
-			bmw.currentPosition = bmw.fileEnd
-			bmw.currentPosition += bmw.currentBufferUsedSpace
+		if bmw.writePosition != 0 {
+			bmw.fileEnd += BLOCK_SIZE
 		}
-		bmw.fileEnd += BLOCK_SIZE
 		bmw.isBufferFlushed = true
+	}
+
+	if !isFromOverwrite {
+		bmw.currentPosition = bmw.writePosition + bmw.currentBufferUsedSpace
 	}
 
 	return nil
@@ -209,6 +211,10 @@ func (bmw *BlockManagerWrap) OverwriteDataInFile(data []byte) (int, error) {
 			return 0, err
 		}
 		bmw.currentPosition += len(data)
+		if bmw.writePosition < bmw.currentPosition {
+			copy(bmw.writeBuffer[bmw.currentPosition-len(data):], data)
+		}
+
 	}
 
 	return len(data), nil
