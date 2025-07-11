@@ -9,10 +9,8 @@ import (
 )
 
 const (
-	BLOCK_SIZE         = 8000 // specify the block size in config file
-	BLOCK_HEADER_SIZE  = 4
-	RECORD_TYPE_SIZE   = 1
-	BLOCK_USABLE_SPACE = BLOCK_SIZE - BLOCK_HEADER_SIZE - RECORD_TYPE_SIZE
+	BLOCK_SIZE        = 8000 // specify the block size in config file
+	BLOCK_HEADER_SIZE = 4
 )
 
 type RecordType uint8
@@ -28,9 +26,9 @@ type BlockManager struct {
 	cache *BlockCache
 }
 
-func NewBlockManager() *BlockManager {
+func NewBlockManager(cacheSize int) *BlockManager {
 	return &BlockManager{
-		cache: NewBlockCache(BLOCK_SIZE * 10),
+		cache: NewBlockCache(cacheSize),
 	}
 }
 
@@ -75,87 +73,90 @@ func (bm *BlockManager) ReadBlock(filePath string, blockNumber int) ([]byte, err
 	return data, err
 }
 
-func (bm *BlockManager) WriteBlock(filePath string, blockNumber int, data []byte) error {
+func (bm *BlockManager) WriteBlock(filePath string, blockNumber int, data []byte) ([]byte, error) {
 	block, _ := bm.ReadBlock(filePath, blockNumber)
 
 	currentLength := bm.GetCurrentLength(block)
-	remainingSpace := BLOCK_SIZE - currentLength - RECORD_TYPE_SIZE
+	remainingSpace := BLOCK_SIZE - currentLength
+
+	lastBlock := make([]byte, 0)
 
 	if currentLength+len(data) > remainingSpace {
-		block, _ = bm.AddDataWithBiggerSizeToBlock(currentLength, remainingSpace, data, block)
+		block, lastBlock = bm.AddDataWithBiggerSizeToBlock(currentLength, remainingSpace, data, block)
 	} else if currentLength+len(data) <= remainingSpace {
 		block, _ = bm.AddDataWithCorrectSizeToBlock(currentLength, data, block)
 	}
 
 	err := bm.WriteToDisk(filePath, blockNumber, block)
 
-	return err
+	return lastBlock, err
 }
 
 func (bm *BlockManager) GetCurrentLength(data []byte) int {
-	return int(binary.LittleEndian.Uint32(data[:BLOCK_HEADER_SIZE]))
+	return int(binary.LittleEndian.Uint32(data[BLOCK_SIZE-BLOCK_HEADER_SIZE:]))
 }
 
 func (bm *BlockManager) AddDataWithCorrectSizeToBlock(currentLength int, data []byte, block []byte) ([]byte, int) {
-	block[currentLength] = byte(FULL)
-	copy(block[currentLength+RECORD_TYPE_SIZE:], data)
-	newLength := currentLength + len(data) + RECORD_TYPE_SIZE
-	binary.LittleEndian.PutUint32(block[:BLOCK_HEADER_SIZE], uint32(newLength))
+	copy(block[currentLength:], data)
+	newLength := currentLength + len(data)
+	var additionalBlock []byte
+	if BLOCK_SIZE >= newLength+BLOCK_HEADER_SIZE {
+		binary.LittleEndian.PutUint32(block[BLOCK_SIZE-BLOCK_HEADER_SIZE:], uint32(newLength))
+	} else {
+		additionalBlock = make([]byte, BLOCK_SIZE)
+		binary.LittleEndian.PutUint32(additionalBlock[BLOCK_SIZE-BLOCK_HEADER_SIZE:], uint32(0))
+	}
 	return block, newLength
 }
 
 func (bm *BlockManager) AddDataWithEqualSizeToBlock(currentLength int, data []byte, block []byte) ([]byte, []byte) {
-	block[currentLength] = byte(FULL)
-	copy(block[currentLength+RECORD_TYPE_SIZE:], data)
-	newLength := currentLength + len(data) + RECORD_TYPE_SIZE
-	binary.LittleEndian.PutUint32(block[:BLOCK_HEADER_SIZE], uint32(newLength))
+	copy(block[currentLength:], data)
 	newBlock := make([]byte, BLOCK_SIZE)
-	binary.LittleEndian.PutUint32(newBlock[:BLOCK_HEADER_SIZE], uint32(BLOCK_HEADER_SIZE))
+	binary.LittleEndian.PutUint32(newBlock[BLOCK_SIZE-BLOCK_HEADER_SIZE:], uint32(0))
 	return block, newBlock
 }
 
 func (bm *BlockManager) AddDataWithBiggerSizeToBlock(currentLength int, remainingSpace int, data []byte, block []byte) ([]byte, []byte) {
 	newBlock := make([]byte, BLOCK_SIZE)
-	copy(block[currentLength:], make([]byte, remainingSpace+1))
-	newLength := currentLength + remainingSpace + 1
-	binary.LittleEndian.PutUint32(block[:BLOCK_HEADER_SIZE], uint32(newLength))
+	copy(block[currentLength:], make([]byte, remainingSpace))
 	allBlocksToWrite := make([]byte, 0)
+	additionalBlock := make([]byte, 0)
 	allBlocksToWrite = append(allBlocksToWrite, block...)
 	lastBlock := make([]byte, 0)
-	if len(data) > BLOCK_USABLE_SPACE {
-		numBlocks := math.Ceil(float64(len(data)) / float64(BLOCK_USABLE_SPACE))
+	if len(data) > BLOCK_SIZE {
+		numBlocks := math.Ceil(float64(len(data)) / float64(BLOCK_SIZE))
 		for i := 0; i < int(numBlocks); i++ {
-			start := i * BLOCK_USABLE_SPACE
-			end := start + BLOCK_USABLE_SPACE
+			start := i * BLOCK_SIZE
+			end := start + BLOCK_SIZE
 			if end > len(data) {
 				end = len(data)
 			}
 			blockData := data[start:end]
 
-			if i == 0 {
-				newBlock[BLOCK_HEADER_SIZE] = byte(FIRST)
-			} else if i == int(numBlocks)-1 {
-				newBlock[BLOCK_HEADER_SIZE] = byte(LAST)
-			} else {
-				newBlock[BLOCK_HEADER_SIZE] = byte(MIDDLE)
-			}
-
-			copy(newBlock[BLOCK_HEADER_SIZE+RECORD_TYPE_SIZE:], blockData)
-			newLength := len(blockData) + RECORD_TYPE_SIZE + BLOCK_HEADER_SIZE
-			binary.LittleEndian.PutUint32(newBlock[:BLOCK_HEADER_SIZE], uint32(newLength))
+			copy(newBlock, blockData)
 
 			if i == int(numBlocks)-1 {
-				lastBlock = newBlock
+				newLength := len(blockData)
+				if newLength+BLOCK_HEADER_SIZE <= BLOCK_SIZE {
+					binary.LittleEndian.PutUint32(newBlock[BLOCK_SIZE-BLOCK_HEADER_SIZE:], uint32(newLength))
+					lastBlock = newBlock
+				} else {
+					additionalBlock = make([]byte, BLOCK_SIZE)
+					binary.LittleEndian.PutUint32(newBlock[BLOCK_SIZE-BLOCK_HEADER_SIZE:], uint32(0))
+				}
 			}
 
 			allBlocksToWrite = append(allBlocksToWrite, newBlock...)
+			if len(additionalBlock) > 0 {
+				allBlocksToWrite = append(allBlocksToWrite, additionalBlock...)
+			}
+
 		}
 		block = allBlocksToWrite
 	} else {
-		newBlock[BLOCK_HEADER_SIZE] = byte(FULL)
-		copy(newBlock[BLOCK_HEADER_SIZE+RECORD_TYPE_SIZE:], data)
-		newLength := len(data) + RECORD_TYPE_SIZE + BLOCK_HEADER_SIZE
-		binary.LittleEndian.PutUint32(newBlock[:BLOCK_HEADER_SIZE], uint32(newLength))
+		copy(newBlock, data)
+		newLength := len(data)
+		binary.LittleEndian.PutUint32(newBlock[BLOCK_SIZE-BLOCK_HEADER_SIZE:], uint32(newLength))
 		allBlocksToWrite = append(allBlocksToWrite, newBlock...)
 		block = allBlocksToWrite
 		lastBlock = newBlock
@@ -180,6 +181,23 @@ func (bm *BlockManager) WriteToDisk(filePath string, blockNumber int, block []by
 	for i := 0; i < len(block); i += BLOCK_SIZE {
 		blockData := block[i : i+BLOCK_SIZE]
 		bm.cache.Put(filePath, uint32((blockNumber+i)*BLOCK_SIZE), blockData)
+	}
+
+	return nil
+}
+
+func (bm *BlockManager) OverwriteOnDisk(filePath string, offset int, data []byte) error {
+	file := openFile(filePath, os.O_RDWR)
+	defer closeFile(file)
+
+	_, err := file.Seek(int64(offset), 0)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	_, err = file.Write(data)
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	return nil
@@ -223,7 +241,7 @@ func (bm *BlockManager) ReadBlockByOffset(filePath string, offset int) []byte {
 	return block
 }
 
-func (bm *BlockManager) WriteBytesByOffset(filePath string, offset int, data []byte) error {
+func (bm *BlockManager) WriteBytesByOffset(filePath string, offset int, data []byte) ([]byte, error) {
 	blockNumber := offset / BLOCK_SIZE
 
 	return bm.WriteBlock(filePath, blockNumber, data)
