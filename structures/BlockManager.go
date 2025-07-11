@@ -11,8 +11,6 @@ import (
 const (
 	BLOCK_SIZE        = 8000 // specify the block size in config file
 	BLOCK_HEADER_SIZE = 4
-	//RECORD_TYPE_SIZE   = 1
-	//BLOCK_USABLE_SPACE = BLOCK_SIZE - BLOCK_HEADER_SIZE
 )
 
 type RecordType uint8
@@ -28,9 +26,9 @@ type BlockManager struct {
 	cache *BlockCache
 }
 
-func NewBlockManager() *BlockManager {
+func NewBlockManager(cacheSize int) *BlockManager {
 	return &BlockManager{
-		cache: NewBlockCache(BLOCK_SIZE * 10),
+		cache: NewBlockCache(cacheSize),
 	}
 }
 
@@ -101,7 +99,7 @@ func (bm *BlockManager) GetCurrentLength(data []byte) int {
 func (bm *BlockManager) AddDataWithCorrectSizeToBlock(currentLength int, data []byte, block []byte) ([]byte, int) {
 	copy(block[currentLength:], data)
 	newLength := currentLength + len(data)
-	additionalBlock := make([]byte, 0)
+	var additionalBlock []byte
 	if BLOCK_SIZE >= newLength+BLOCK_HEADER_SIZE {
 		binary.LittleEndian.PutUint32(block[BLOCK_SIZE-BLOCK_HEADER_SIZE:], uint32(newLength))
 	} else {
@@ -121,8 +119,6 @@ func (bm *BlockManager) AddDataWithEqualSizeToBlock(currentLength int, data []by
 func (bm *BlockManager) AddDataWithBiggerSizeToBlock(currentLength int, remainingSpace int, data []byte, block []byte) ([]byte, []byte) {
 	newBlock := make([]byte, BLOCK_SIZE)
 	copy(block[currentLength:], make([]byte, remainingSpace))
-	/* newLength := currentLength + remainingSpace
-	binary.LittleEndian.PutUint32(block[:BLOCK_HEADER_SIZE], uint32(newLength)) */
 	allBlocksToWrite := make([]byte, 0)
 	additionalBlock := make([]byte, 0)
 	allBlocksToWrite = append(allBlocksToWrite, block...)
@@ -136,14 +132,6 @@ func (bm *BlockManager) AddDataWithBiggerSizeToBlock(currentLength int, remainin
 				end = len(data)
 			}
 			blockData := data[start:end]
-
-			/* if i == 0 {
-				newBlock[BLOCK_HEADER_SIZE] = byte(FIRST)
-			} else if i == int(numBlocks)-1 {
-				newBlock[BLOCK_HEADER_SIZE] = byte(LAST)
-			} else {
-				newBlock[BLOCK_HEADER_SIZE] = byte(MIDDLE)
-			} */
 
 			copy(newBlock, blockData)
 
