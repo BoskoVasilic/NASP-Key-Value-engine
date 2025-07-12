@@ -1,15 +1,16 @@
 package structures
 
 import (
-	utils "KVengine/utils"
+	"KVengine/hash"
 	"encoding/binary"
-	"sort"
+	"time"
 )
 
 type ExportEntry struct {
 	key       uint64
 	value     []byte
-	tombstone bool // Indicates if the entry is a tombstone
+	tombstone bool  // Indicates if the entry is a tombstone
+	time      int64 // Time of creation or update
 }
 
 func NewExportEntryFromEntry(entry *Entry, key uint64) *ExportEntry {
@@ -17,6 +18,7 @@ func NewExportEntryFromEntry(entry *Entry, key uint64) *ExportEntry {
 		key:       key,
 		value:     entry.value,
 		tombstone: entry.deleted,
+		time:      entry.time,
 	}
 }
 func NewExportEntry(key uint64, value []byte, toombstone bool) *ExportEntry {
@@ -24,6 +26,7 @@ func NewExportEntry(key uint64, value []byte, toombstone bool) *ExportEntry {
 		key:       key,
 		tombstone: toombstone,
 		value:     value,
+		time:      time.Now().UnixMicro(), // Time is not used in this context, but can be set if needed
 	}
 }
 func (e ExportEntry) GetKey() uint64 {
@@ -40,13 +43,23 @@ func (e ExportEntry) IsDeleted() bool {
 
 func (ent *ExportEntry) toBytes() []byte {
 	buf := make([]byte, 0)
-	binary.AppendUvarint(buf, ent.key) // Append the key as a varint)
+	buf = binary.AppendUvarint(buf, ent.key) // Append the key as a varint)
 	if ent.tombstone {
-		binary.AppendUvarint(buf, 0) // Value length is 0 for deleted entries
+		buf = binary.AppendUvarint(buf, 0) // Value length is 0 for deleted entries
 	} else {
-		binary.AppendUvarint(buf, uint64(len(ent.value)+1))
+		buf = binary.AppendUvarint(buf, uint64(len(ent.value)+1))
 		buf = append(buf, ent.value...)
 	}
+	buf = binary.AppendUvarint(buf, uint64(ent.time)) // Append the time as a varint
+	hash := hash.CreateHashFunctions(42)[0]
+	CRU := hash.Hash(buf)
+	CRU = CRU % 1000000007 // Modulo operation to fit the hash into a smaller range
+	bufCru := make([]byte, 0)
+	bufCru = binary.AppendUvarint(bufCru, CRU) // Append the length of the CRU hash
+	// Append the CRU hash as a varint
+	//fmt.Println("CRU hash:", bufCru)
+	buf = append(bufCru, buf...)
+	//fmt.Println("ExportEntry toBytes:", buf)
 	return buf
 }
 func (ent *ExportEntry) GetSize() uint64 {
@@ -67,34 +80,4 @@ func (ent *ExportEntry) GetSize() uint64 {
 }
 func comper(a, b *ExportEntry) bool {
 	return a.key < b.key
-}
-
-type ListWithIterator[T any] struct {
-	entries []*T // Slice of ExportEntry pointers
-}
-
-func NewListWithIterator[T any]() *ListWithIterator[T] {
-	return &ListWithIterator[T]{
-		entries: make([]*T, 0),
-	}
-
-}
-func (list *ListWithIterator[T]) Add(entry *T) {
-	list.entries = append(list.entries, entry)
-}
-
-func (list *ListWithIterator[T]) Sort(compare func(a, b *T) bool) {
-	sort.Slice(list.entries, func(i, j int) bool {
-		return compare(list.entries[i], list.entries[j])
-	})
-}
-
-func (list *ListWithIterator[T]) GetIter() *utils.Iterator[[]*T, *T] {
-	return utils.NewIterator(&list.entries, 0, func(entries *[]*T, pos int) (*T, bool) {
-		if pos >= len(*entries) {
-			return nil, false
-		}
-		pos = pos + 1
-		return (*entries)[pos-1], true
-	})
 }

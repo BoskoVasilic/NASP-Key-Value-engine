@@ -1,13 +1,14 @@
 package structures
 
 import (
+	"KVengine/structures/auxiliary"
 	"KVengine/utils"
 	"fmt"
 )
 
 type GlobalDictionary struct {
 	SkipList *SkipList         // SkipList is a data structure that allows for fast search, insertion, and deletion
-	Size     uint64            // Size is the number of entries in the dictionaryMerge branch 'SSTable' into Develop
+	Size     uint64            // Size is the number of entries in the dictionary
 	file     *BlockManagerWrap // BlockManager is responsible for managing blocks of data in the file
 }
 
@@ -18,10 +19,10 @@ func NewGlobalDictionary(filePath string, blocMenager *BlockManager) *GlobalDict
 		file:     NewBlockManagerWrap(filePath, blocMenager),
 	}
 }
-func AddItems[T any](globalDictionary *GlobalDictionary, itterator *utils.Iterator[T, *Entry]) *utils.Iterator[[]*ExportEntry, *ExportEntry] {
+func AddItems[T any, H any](globalDictionary *GlobalDictionary, itterator *utils.Iterator[T, H, *Entry]) *utils.Iterator[[]*ExportEntry, int, *ExportEntry] {
 	// Treba da postoji flush opcija
-	defer globalDictionary.file.FlushBuffer()
-	list := NewListWithIterator[ExportEntry]()
+	defer globalDictionary.file.FlushBuffer(false)
+	list := auxiliary.NewListWithIterator[ExportEntry]()
 	for true {
 		entry, ok := itterator.Next()
 		if !ok {
@@ -47,7 +48,7 @@ func AddItems[T any](globalDictionary *GlobalDictionary, itterator *utils.Iterat
 }
 func (GlobalDictionary *GlobalDictionary) AddItem(entry *Entry) uint64 {
 	buffer := make([]byte, 0)
-	GlobalDictionary.SkipList.Put(entry.key, utils.Uint64ToBytes(GlobalDictionary.Size), false)
+	GlobalDictionary.SkipList.Put(entry.key, utils.Uint64ToBytes(GlobalDictionary.Size))
 	buffer = append(buffer, utils.Uint64ToBytes(uint64(len(entry.key)))...)
 	buffer = append(buffer, []byte(entry.key)...)
 	buffer = append(buffer, utils.Uint64ToBytes(GlobalDictionary.Size)...)

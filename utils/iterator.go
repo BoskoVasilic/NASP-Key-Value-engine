@@ -1,7 +1,7 @@
 package utils
 
 type Iter interface {
-	Next()
+	Next() (any, bool)
 }
 
 type Iterator[T any, H any, V any] struct {

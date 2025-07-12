@@ -4,15 +4,14 @@ import (
 	utils "KVengine/utils"
 	"encoding/binary"
 	"fmt"
-	"os"
 )
 
 type SSTable[T any, H any] struct {
 	Podaci           *utils.Iterator[T, H, *Entry] // Iterator over the data in the SSTable
 	Filter           *BloomFilter
 	numberOfEnterys  int
-	oneFile          bool // Indicates if the SSTable is stored in a single file
-	SumeeryIndex     uint64
+	oneFile          bool   // Indicates if the SSTable is stored in a single file
+	SumeeryIndex     uint64 //NumberOfitems in the summary index
 	BlockManager     *BlockManager
 	globalDictionary *GlobalDictionary
 }
@@ -29,342 +28,830 @@ func NewSSTable[T any, H any](podaci *utils.Iterator[T, H, *Entry], NumberOfEnye
 	}
 }
 
-func (s *SSTable[T, H]) GenerateSSTabel() {
-	// Create a file to store the SSTable data
+func (s *SSTable[T, H]) GenerateSSTabel(StartPath string, compresion bool) string {
+	if compresion {
+		data := AddItems(s.globalDictionary, s.Podaci)
+		if s.oneFile {
+			fmt.Println("Generating single file SSTable...")
+			file := NewBlockManagerWrap(StartPath, s.BlockManager)
+			file.WriteToFile([]byte{1}) // Write 1 to indicate it is compressed
+			file.WriteToFile([]byte{1}) // Write 1 to indicate single file format
+			//Write 5 Uint64 values for the offsets
+			file.WriteToFile(utils.Uint64ToBytes(uint64(0))) // Offset for Data
+			file.WriteToFile(utils.Uint64ToBytes(uint64(0))) // Offset for Blom filter
+			file.WriteToFile(utils.Uint64ToBytes(uint64(0))) // Offset for IndexSummery
+			file.WriteToFile(utils.Uint64ToBytes(uint64(0))) // Offset for Index blocks
+			file.WriteToFile(utils.Uint64ToBytes(uint64(0))) // Offset for Merkle tree
+			file.WriteToFile(utils.Uint64ToBytes(uint64(0))) // Offset for Merkle tree
+			IndexSummery := make([]byte, 0)
+			IndexBloc := make([]byte, 0)
+			size := WriteDataBlockCompresed(file, data, &IndexSummery, &IndexBloc, s.Filter, s.SumeeryIndex)
+			// Write the Bloom filter
+			bloomFilterData := s.Filter.SerializeBloomF()
+			file.WriteToFile(bloomFilterData)
+			bloomFilterOffset := uint64(len(bloomFilterData))
+			// Write the Index summary
+			file.WriteToFile(IndexSummery)
+			indexSummaryOffset := uint64(len(IndexSummery))
+			// Write the Index blocks
+			file.WriteToFile(IndexBloc)
+			indexBlockOffset := uint64(len(IndexBloc))
+			// Write the offsets to the file
+			//Write Merkel tree in this section
 
-	// Ovde cu da radim pretvaranje)
-	data := AddItems(s.globalDictionary, s.Podaci)
-	podatak, ok := data.Next()
-	firstKey := -1 // Initialize firstKey to -1 to indicate it hasn't been set yet
-	IndexBlock := make([]byte, 0, 0)
-	IndexSummery := make([]byte, 0, 0)
-	offset := uint64(0)
-	indexoffset := uint64(0)
-	index := 0
-	firtKEyEver := podatak.GetKey()
-	lastKey := firtKEyEver // Initialize lastKey with the first key
-	for ok {
-		if podatak == nil {
-			break
-		}
-		s.Filter.Put(utils.Uint64ToBytes(podatak.GetKey()))
-		key := podatak.GetKey()
-		if firstKey == -1 {
-			firstKey = int(podatak.GetKey()) // Set firstKey to the first key encountered
-		}
-		//Create an block
-		IndexBlockEntry := make([]byte, 0)
-		IndexBlockEntry = binary.AppendUvarint(IndexBlockEntry, key)
-		IndexBlockEntry = binary.AppendUvarint(IndexBlockEntry, uint64(offset))
-		fmt.Println(IndexBlockEntry)
-		index += 1
-		IndexBlock = append(IndexBlock, IndexBlockEntry...)
-		offset += podatak.GetSize()
-		// Creating IndexSummery
-		if index%int(s.SumeeryIndex) == 0 {
-			// Create an index entry
-			indexEntry := make([]byte, 0)
-			indexEntry = binary.AppendUvarint(indexEntry, uint64(firstKey))
-			indexEntry = binary.AppendUvarint(indexEntry, key)
-			indexEntry = binary.AppendUvarint(indexEntry, uint64(indexoffset))
-			IndexSummery = append(IndexSummery, indexEntry...)
-			indexoffset = uint64(len(IndexBlock))
-			firstKey = -1 // Reset firstKey for the next block
-		}
-		podatak, ok = data.Next()
-		if podatak != nil {
-			lastKey = podatak.GetKey()
-		}
-		if !ok && firstKey != -1 {
-			// If we reach the end of the data and firstKey is still set, add the last entry
-			indexEntryS := make([]byte, 0)
-			indexEntryS = binary.AppendUvarint(indexEntryS, uint64(firstKey))
-			indexEntryS = binary.AppendUvarint(indexEntryS, uint64(lastKey))
-			indexEntryS = binary.AppendUvarint(indexEntryS, uint64(indexoffset))
-			IndexSummery = append(IndexSummery, indexEntryS...)
-		}
+			// Generating heeder with offsets
+			Heeder := make([]byte, 0)
+			Heeder = append(Heeder, utils.Uint64ToBytes(50)...)
+			Heeder = append(Heeder, utils.Uint64ToBytes(50+size)...)
+			Heeder = append(Heeder, utils.Uint64ToBytes(size+bloomFilterOffset+50)...)
+			Heeder = append(Heeder, utils.Uint64ToBytes(size+bloomFilterOffset+indexSummaryOffset+50)...)
+			Heeder = append(Heeder, utils.Uint64ToBytes(size+bloomFilterOffset+indexBlockOffset+indexSummaryOffset+50)...)
+			Heeder = append(Heeder, utils.Uint64ToBytes(size+bloomFilterOffset+indexBlockOffset+indexSummaryOffset+50)...) //Need Merkle tree offset
+			//file.FlushBuffer(false)
+			fmt.Println(Heeder) // Flush the buffer to write the data to the file
+			file.SetCurrentPosition(2)
+			file.OverwriteDataInFile(Heeder) // Overwrite the header with the offsets
+			file.FlushBuffer(false)          // Flush the buffer to write the header to the file
+			fmt.Println("SSTable generated successfully at", StartPath)
+			return StartPath
+		} else {
+			fmt.Println("Generating multiple files SSTable...")
+			// Handle multiple files case
+			// Implement logic to write data to multiple files
+			// For example, you can create a new file for each block of data
+			// and write the corresponding index and bloom filter information.
+			// This is a placeholder implementation.
+			file := NewBlockManagerWrap(StartPath+"TOC", s.BlockManager)
 
-	}
-
-	// Write the data block to the file
-	if s.oneFile {
-		file := NewBlockManagerWrap("SSTable.bin", s.BlockManager)
-		defer file.FlushBuffer()
-		offsetFile := uint64(0)
-		// Write in file
-		file.WriteToFile([]byte{1})
-		n, _ := file.WriteToFile(binary.AppendUvarint(nil, uint64(firtKEyEver)))
-		offsetFile += uint64(n)
-		n, _ = file.WriteToFile(binary.AppendUvarint(nil, uint64(lastKey)))
-		offsetFile += uint64(n)
-		BFilter := s.Filter.SerializeBloomF()
-		offsetFile += uint64(8 * 4)
-		offsetFile += uint64(1)
-		file.WriteToFile(utils.Uint64ToBytes(offsetFile))
-		file.WriteToFile(utils.Uint64ToBytes(offsetFile + uint64(len(BFilter))))
-		file.WriteToFile(utils.Uint64ToBytes(offsetFile + uint64(len(BFilter)) + uint64(len(IndexSummery))))
-		file.WriteToFile(utils.Uint64ToBytes(offsetFile + uint64(len(BFilter)) + uint64(len(IndexSummery)) + uint64(len(IndexBlock))))
-		//file.WriteToFile(BFilter)
-		fmt.Println("Index Sumery:", IndexSummery)
-		fmt.Println("Index Block:", IndexBlock)
-		file.WriteToFile(IndexSummery)
-		file.WriteToFile(IndexBlock)
-		// Placeholder for the data block
-		s.Podaci.Reset()
-		for true {
-			podatak, _ := s.Podaci.Next()
-			if podatak == nil {
-				break
-			}
-			file.WriteToFile(podatak.toBytes())
+			file.WriteToFile([]byte{1}) // Write 1 to say it is compressed
+			file.WriteToFile([]byte{0}) // Write 0 to indicate multiple files format
+			// Write paths to other files
+			data_path := StartPath + "dataSstable"
+			indexSummery_path := StartPath + "indexSummerySstable"
+			indexBlock_path := StartPath + "indexBlockSstable"
+			bloomFilter_path := StartPath + "bloomFilterSstable"
+			merkleTree_path := StartPath + "merkleTreeSstable"
+			Data := make([]byte, 0)
+			Data = binary.AppendUvarint(Data, uint64(len(data_path)))
+			Data = append(Data, []byte(data_path)...)
+			Data = binary.AppendUvarint(Data, uint64(len(bloomFilter_path)))
+			Data = append(Data, []byte(bloomFilter_path)...)
+			Data = binary.AppendUvarint(Data, uint64(len(indexSummery_path)))
+			Data = append(Data, []byte(indexSummery_path)...)
+			Data = binary.AppendUvarint(Data, uint64(len(indexBlock_path)))
+			Data = append(Data, []byte(indexBlock_path)...)
+			Data = binary.AppendUvarint(Data, uint64(len(merkleTree_path)))
+			Data = append(Data, []byte(merkleTree_path)...)
+			file.WriteToFile(Data) // Write the paths to the file
+			file.FlushBuffer(false)
+			fileData := NewBlockManagerWrap(data_path, s.BlockManager)
+			indexSummery := make([]byte, 0)
+			indexBlock := make([]byte, 0)
+			size := WriteDataBlockCompresed(fileData, data, &indexSummery, &indexBlock, s.Filter, s.SumeeryIndex)
+			fileData.FlushBuffer(false)
+			fmt.Println("Data block size:", size)
+			// Write the Bloom filter
+			bloomFilterData := s.Filter.SerializeBloomF()
+			fileBloom := NewBlockManagerWrap(bloomFilter_path, s.BlockManager)
+			fileBloom.WriteToFile(binary.AppendUvarint([]byte{}, uint64(len(bloomFilterData))))
+			fileBloom.WriteToFile(bloomFilterData)
+			fileBloom.FlushBuffer(false)
+			fileIndexSummery := NewBlockManagerWrap(indexSummery_path, s.BlockManager)
+			fileIndexSummery.WriteToFile(indexSummery)
+			fileIndexSummery.FlushBuffer(false)
+			fileIndexBlock := NewBlockManagerWrap(indexBlock_path, s.BlockManager)
+			fileIndexBlock.WriteToFile(indexBlock)
+			fileIndexBlock.FlushBuffer(false)
+			//Creating Merkle tree file need to be finished
+			return StartPath + "TOC"
 		}
 	} else {
-		// Handle the case where oneFile is false (if needed)
-		/*file, err := os.Create("SSTableTOC.bin")
-		if err != nil {
-			panic(err)
-		}
-		defer file.Close()
-		fileFilterPath := "SSTableFilter.bin"
-		fileFilter, err := os.Create(fileFilterPath)
-		if err != nil {
-			panic(err)
-		}
-		defer fileFilter.Close()
-		FileIndexSumeeryPath := "SSTableIndexSummery.bin"
-		fileIndexSummery, err := os.Create(FileIndexSumeeryPath)
-		if err != nil {
-			panic(err)
-		}
-		defer fileIndexSummery.Close()
-		fileIndexPath := "SSTableIndex.bin"
-		fileIndex, err := os.Create(fileIndexPath)
-		if err != nil {
-			panic(err)
-		}
-		defer fileIndex.Close()
-		fileDataPath := "SSTableData.bin"
-		fileData, err := os.Create(fileDataPath)
-		if err != nil {
-			panic(err)
-		}
-		defer fileData.Close()
-		offsetFile := uint64(0)
-		// Write in file
-		_, err = file.Write([]byte{0})
-		_, err = file.Write(utils.Uint64ToBytes(uint64(len(firstKey))))
-		offsetFile += uint64(len(firstKey)) + 8 // +1 for the type byte
-		_, err = file.Write([]byte(firstKey))
-		_, err = file.Write(utils.Uint64ToBytes(uint64(len(lastKey))))
-		_, err = file.Write([]byte(lastKey))
-		offsetFile += uint64(len(lastKey)) + 8 // +8 for the length of the last key
-		_, err = file.Write(utils.Uint64ToBytes(uint64(len(fileFilterPath))))
-		_, err = file.Write([]byte(fileFilterPath))
-		_, err = file.Write(utils.Uint64ToBytes(uint64(len(FileIndexSumeeryPath))))
-		_, err = file.Write([]byte(FileIndexSumeeryPath))
-		_, err = file.Write(utils.Uint64ToBytes(uint64(len(fileIndexPath))))
-		_, err = file.Write([]byte(fileIndexPath))
-		_, err = file.Write(utils.Uint64ToBytes(uint64(len(fileDataPath))))
-		_, err = file.Write([]byte(fileDataPath))
+		fmt.Println("Generating  files SSTable withno compresion...")
+		if s.oneFile {
+			file := NewBlockManagerWrap(StartPath, s.BlockManager)
+			file.WriteToFile([]byte{0}) // Write 0 to indicate it is not compressed
+			file.WriteToFile([]byte{1}) // Write 1 to indicate single file format
+			//Write 5 Uint64 values for the offsets
+			file.WriteToFile(utils.Uint64ToBytes(uint64(0))) // Offset for Data
+			file.WriteToFile(utils.Uint64ToBytes(uint64(0))) // Offset for Blom filter
+			file.WriteToFile(utils.Uint64ToBytes(uint64(0))) // Offset for IndexSummery
+			file.WriteToFile(utils.Uint64ToBytes(uint64(0))) // Offset for Index blocks
+			file.WriteToFile(utils.Uint64ToBytes(uint64(0))) // Offset for Merkle tree
+			file.WriteToFile(utils.Uint64ToBytes(uint64(0))) // Offset for Merkle tree
+			IndexSummery := make([]byte, 0)
+			IndexBloc := make([]byte, 0)
+			size := WriteDataBlock(file, s.Podaci, &IndexSummery, &IndexBloc, s.Filter, s.SumeeryIndex)
+			// Write the Bloom filter
+			bloomFilterData := s.Filter.SerializeBloomF()
+			file.WriteToFile(bloomFilterData)
+			bloomFilterOffset := uint64(len(bloomFilterData))
+			// Write the Index summary
+			file.WriteToFile(IndexSummery)
+			indexSummaryOffset := uint64(len(IndexSummery))
+			// Write the Index blocks
+			file.WriteToFile(IndexBloc)
+			indexBlockOffset := uint64(len(IndexBloc))
+			// Write the offsets to the file
+			//Write Merkel tree in this section
+			// Generating heeder with offsets
+			Heeder := make([]byte, 0)
+			Heeder = append(Heeder, utils.Uint64ToBytes(50)...)
+			Heeder = append(Heeder, utils.Uint64ToBytes(50+size)...)
+			Heeder = append(Heeder, utils.Uint64ToBytes(size+bloomFilterOffset+50)...)
+			Heeder = append(Heeder, utils.Uint64ToBytes(size+bloomFilterOffset+indexSummaryOffset+50)...)
+			Heeder = append(Heeder, utils.Uint64ToBytes(size+bloomFilterOffset+indexBlockOffset+indexSummaryOffset+50)...)
+			Heeder = append(Heeder, utils.Uint64ToBytes(size+bloomFilterOffset+indexBlockOffset+indexSummaryOffset+50)...) //Need Merkle tree offset
+			//file.FlushBuffer(false)
+			fmt.Println(Heeder) // Flush the buffer to write the data to the file
+			file.SetCurrentPosition(2)
+			file.OverwriteDataInFile(Heeder) // Overwrite the header with the offsets
+			file.FlushBuffer(false)
+			return StartPath // Flush the buffer to write the header to the file
+			// Flush the buffer to write the header to the file
+		} else {
+			fmt.Println("Generating multiple files SSTable...")
+			// Handle multiple files case
+			// Implement logic to write data to multiple files
+			// For example, you can create a new file for each block of data
+			// and write the corresponding index and bloom filter information.
+			// This is a placeholder implementation.
+			file := NewBlockManagerWrap(StartPath+"TOC", s.BlockManager)
 
-		BFilter := s.Filter.SerializeBloomF()
-		_, err = fileFilter.Write(BFilter)
-		_, err = fileIndexSummery.Write(IndexSummery)
-		_, err = fileIndex.Write(IndexBlock)
-		for true {
-			podatak, _ := s.Podaci.Next()
-			if podatak == nil {
-				break
-			}
-			fileData.Write(podatak.toBytes())
-		}*/
+			file.WriteToFile([]byte{0}) // Write 0 to say it is not compressed
+			file.WriteToFile([]byte{0}) // Write 0 to indicate multiple files format
+			// Write paths to other files
+			data_path := StartPath + "dataSstable"
+			indexSummery_path := StartPath + "indexSummerySstable"
+			indexBlock_path := StartPath + "indexBlockSstable"
+			bloomFilter_path := StartPath + "bloomFilterSstable"
+			merkleTree_path := StartPath + "merkleTreeSstable"
+			Data := make([]byte, 0)
+			Data = binary.AppendUvarint(Data, uint64(len(data_path)))
+			Data = append(Data, []byte(data_path)...)
+			Data = binary.AppendUvarint(Data, uint64(len(bloomFilter_path)))
+			Data = append(Data, []byte(bloomFilter_path)...)
+			Data = binary.AppendUvarint(Data, uint64(len(indexSummery_path)))
+			Data = append(Data, []byte(indexSummery_path)...)
+			Data = binary.AppendUvarint(Data, uint64(len(indexBlock_path)))
+			Data = append(Data, []byte(indexBlock_path)...)
+			Data = binary.AppendUvarint(Data, uint64(len(merkleTree_path)))
+			Data = append(Data, []byte(merkleTree_path)...)
+			file.WriteToFile(Data) // Write the paths to the file
+			file.FlushBuffer(false)
+			fileData := NewBlockManagerWrap(data_path, s.BlockManager)
+			indexSummery := make([]byte, 0)
+			indexBlock := make([]byte, 0)
+			size := WriteDataBlock(fileData, s.Podaci, &indexSummery, &indexBlock, s.Filter, s.SumeeryIndex)
+			fileData.FlushBuffer(false)
+			fmt.Println("Data block size:", size)
+			// Write the Bloom filter
+			bloomFilterData := s.Filter.SerializeBloomF()
+			fileBloom := NewBlockManagerWrap(bloomFilter_path, s.BlockManager)
+			fileBloom.WriteToFile(binary.AppendUvarint([]byte{}, uint64(len(bloomFilterData))))
+			fileBloom.WriteToFile(bloomFilterData)
+			fileBloom.FlushBuffer(false)
+			fileIndexSummery := NewBlockManagerWrap(indexSummery_path, s.BlockManager)
+			fileIndexSummery.WriteToFile(indexSummery)
+			fileIndexSummery.FlushBuffer(false)
+			fileIndexBlock := NewBlockManagerWrap(indexBlock_path, s.BlockManager)
+			fileIndexBlock.WriteToFile(indexBlock)
+			fileIndexBlock.FlushBuffer(false)
+			//Creating Merkle tree file need to be finished
+			fmt.Println("SSTable generated successfully at", StartPath+"TOC")
+			return StartPath + "TOC"
+		}
 	}
-	// Reset the iterator to the beginning
 }
-func WriteDataBlockCompresed[T any, H any](file *BlockManagerWrap, itter *utils.Iterator[T, H, *ExportEntry]) {
+func WriteDataBlock[T any, H any](file *BlockManagerWrap, itter *utils.Iterator[T, H, *Entry], IndexSummery *[]byte, IndexBloc *[]byte, Filter *BloomFilter, BlockSummery uint64) uint64 {
+	// TODO: Implement the function logic here
+	entry, ok := itter.Next()
+	indexoffset := uint64(0)
+	indexTogo := 0
+	firtKEyEver := entry.GetKey()
+	firstIndexindexSummery := "NoKey"
+	lastKey := firtKEyEver
+	offset := uint64(0)
+	if !ok {
+		fmt.Println("No entries to write.")
+		return 0 // No entries to write
+	}
+	for true {
 
-}
-func WriteDataBlock() {
+		if entry == nil {
+			continue
+		}
 
+		// Create an index entry
+
+		data := entry.toBytes()
+		//fmt.Println(entry.GetKey(), "Data to write:", data)
+		Filter.Put([]byte(entry.GetKey()))
+		file.WriteToFile(data)
+		// Write the data to the file
+		if firstIndexindexSummery == "NoKey" {
+			firstIndexindexSummery = entry.GetKey() // Set firstKey to the first key encountered
+		}
+		// Create an index entry
+		//fmt.Println("Creating index entry for key:", entry.GetKey(), "at offset:", offset)
+		IndexBlockEntry := make([]byte, 0)
+		IndexBlockEntry = binary.AppendUvarint(IndexBlockEntry, uint64(len(entry.GetKey())))
+		IndexBlockEntry = append(IndexBlockEntry, []byte(entry.GetKey())...)
+		IndexBlockEntry = binary.AppendUvarint(IndexBlockEntry, offset)
+		fmt.Println(IndexBlockEntry)
+		*IndexBloc = append(*IndexBloc, IndexBlockEntry...)
+		offset += uint64(len(data))
+		//fmt.Println("Data written to file:", data)
+		//fmt.Println("Offset after writing data:", offset)
+		indexTogo += 1
+		if indexTogo%int(BlockSummery) == 0 {
+			// Create an index entry
+			indexEntry := make([]byte, 0)
+			indexEntry = binary.AppendUvarint(indexEntry, uint64(len(firstIndexindexSummery)))
+			indexEntry = append(indexEntry, []byte(firstIndexindexSummery)...)
+			indexEntry = binary.AppendUvarint(indexEntry, uint64(len(entry.GetKey())))
+			indexEntry = append(indexEntry, []byte(entry.GetKey())...)
+			indexEntry = binary.AppendUvarint(indexEntry, indexoffset)
+			*IndexSummery = append(*IndexSummery, indexEntry...)
+			indexoffset = uint64(len(*IndexBloc))
+			firstIndexindexSummery = "NoKey" // Reset firstKey for the next block
+		}
+		if entry.GetKey() > lastKey {
+			lastKey = entry.GetKey()
+		}
+		// Update the offset
+		entry, ok = itter.Next()
+		if !ok {
+			if firstIndexindexSummery != "NoKey" {
+				// If we reach the end of the data and firstKey is still set, add the last entry
+				indexEntryS := make([]byte, 0)
+				indexEntryS = binary.AppendUvarint(indexEntryS, uint64(len(firstIndexindexSummery)))
+				indexEntryS = append(indexEntryS, []byte(firstIndexindexSummery)...)
+				indexEntryS = binary.AppendUvarint(indexEntryS, uint64(len(lastKey)))
+				indexEntryS = append(indexEntryS, []byte(lastKey)...)
+				indexEntryS = binary.AppendUvarint(indexEntryS, indexoffset)
+				*IndexSummery = append(*IndexSummery, indexEntryS...)
+			}
+			break
+		}
+	}
+	//Add to IndexSummery first and last key
+	firstKeyEverEncoded := make([]byte, 0)
+	firstKeyEverEncoded = binary.AppendUvarint(firstKeyEverEncoded, uint64(len(firtKEyEver)))
+	firstKeyEverEncoded = append(firstKeyEverEncoded, []byte(firtKEyEver)...)
+	*IndexSummery = append(firstKeyEverEncoded, *IndexSummery...)
+	lastKeyEncoded := make([]byte, 0)
+	lastKeyEncoded = binary.AppendUvarint(lastKeyEncoded, uint64(len(lastKey)))
+	lastKeyEncoded = append(lastKeyEncoded, []byte(lastKey)...)
+	*IndexSummery = append(lastKeyEncoded, *IndexSummery...)
+	return offset
+	// Return a default value to avoid missing return error
 }
+
+func WriteDataBlockCompresed[T any, H any](file *BlockManagerWrap, itter *utils.Iterator[T, H, *ExportEntry], IndexSummery *[]byte, IndexBloc *[]byte, Filter *BloomFilter, BlockSummery uint64) uint64 {
+	entry, ok := itter.Next()
+	indexoffset := uint64(0)
+	indexTogo := 0
+	firtKEyEver := entry.GetKey()
+	firstIndexindexSummery := -1
+	lastKey := firtKEyEver
+	offset := uint64(0)
+	if !ok {
+		fmt.Println("No entries to write.")
+		return 0 // No entries to write
+	}
+	for true {
+
+		if entry == nil {
+			continue
+		}
+
+		// Create an index entry
+
+		data := entry.toBytes()
+		fmt.Println(entry.GetKey(), "Data to write:", data)
+		Filter.Put(utils.Uint64ToBytes(entry.GetKey()))
+		file.WriteToFile(data)
+		// Write the data to the file
+		if firstIndexindexSummery == -1 {
+			firstIndexindexSummery = int(entry.GetKey()) // Set firstKey to the first key encountered
+		}
+		// Create an index entry
+		IndexBlockEntry := make([]byte, 0)
+		IndexBlockEntry = binary.AppendUvarint(IndexBlockEntry, entry.GetKey())
+		IndexBlockEntry = binary.AppendUvarint(IndexBlockEntry, offset)
+		fmt.Println(IndexBlockEntry)
+		*IndexBloc = append(*IndexBloc, IndexBlockEntry...)
+		offset += uint64(len(data))
+		indexTogo += 1
+		if indexTogo%int(BlockSummery) == 0 {
+			// Create an index entry
+			indexEntry := make([]byte, 0)
+			indexEntry = binary.AppendUvarint(indexEntry, uint64(firstIndexindexSummery))
+			indexEntry = binary.AppendUvarint(indexEntry, uint64(entry.GetKey()))
+			indexEntry = binary.AppendUvarint(indexEntry, indexoffset)
+			*IndexSummery = append(*IndexSummery, indexEntry...)
+			indexoffset = uint64(len(*IndexBloc))
+			firstIndexindexSummery = -1 // Reset firstKey for the next block
+		}
+		if entry.GetKey() > lastKey {
+			lastKey = entry.GetKey()
+		}
+		// Update the offset
+		entry, ok = itter.Next()
+		if !ok {
+			if firstIndexindexSummery != -1 {
+				// If we reach the end of the data and firstKey is still set, add the last entry
+				indexEntryS := make([]byte, 0)
+				indexEntryS = binary.AppendUvarint(indexEntryS, uint64(firstIndexindexSummery))
+				indexEntryS = binary.AppendUvarint(indexEntryS, uint64(lastKey))
+				indexEntryS = binary.AppendUvarint(indexEntryS, indexoffset)
+				*IndexSummery = append(*IndexSummery, indexEntryS...)
+			}
+			break
+		}
+	}
+	//Add to IndexSummery first and last key
+	firstKeyEverEncoded := make([]byte, 0)
+	firstKeyEverEncoded = binary.AppendUvarint(firstKeyEverEncoded, uint64(firtKEyEver))
+	*IndexSummery = append(firstKeyEverEncoded, *IndexSummery...)
+	lastKeyEncoded := make([]byte, 0)
+	lastKeyEncoded = binary.AppendUvarint(lastKeyEncoded, uint64(lastKey))
+	*IndexSummery = append(lastKeyEncoded, *IndexSummery...)
+	return offset
+}
+
 func ReadSStabel(pathtoToc string, key string, BlockManager *BlockManager, globalDictionary *GlobalDictionary) {
-
 	file := NewBlockManagerWrap(pathtoToc, BlockManager)
-	// Read the first byte to determine if it's a single file or multiple files
-	// Read the first byte to determine if it's a single file or multiple files
-	_, fileTypeData := file.ReadFromCurrentPosition(1)
-	fmt.Println("File Type Data:", fileTypeData)
-	i := 0
-	for i < 110 {
-		n, fileTypeData := file.ReadFromCurrentPosition(1)
+	_, Compresion := file.ReadFromCurrentPosition(1)
+	_, oneFile := file.ReadFromCurrentPosition(1)
+	if Compresion[0] == 1 {
+		keyEntry, _ := globalDictionary.SkipList.Get(key)
+		if keyEntry.GetKey() == "" {
+			fmt.Println("Key not found in the global dictionary.")
+			return
+		}
+		keyUint64 := utils.BytesToUint64(keyEntry.GetValue())
+		if oneFile[0] == 1 {
+			_, dataOffsetBytes := file.ReadFromCurrentPosition(8)
+			_, bloomFilterOffsetBytes := file.ReadFromCurrentPosition(8)
+			_, indexSummeryOffsetBytes := file.ReadFromCurrentPosition(8)
+			_, indexBlockOffsetBytes := file.ReadFromCurrentPosition(8)
+			_, merkleTreeOffsetBytes := file.ReadFromCurrentPosition(8)
+			// Read the offsets from the file
+			fmt.Println("Offsets read from the file:")
+			fmt.Println("Data Offset Bytes:", dataOffsetBytes)
+			fmt.Println("Bloom Filter Offset Bytes:", bloomFilterOffsetBytes)
+			fmt.Println("Index Summary Offset Bytes:", indexSummeryOffsetBytes)
+			fmt.Println("Index Block Offset Bytes:", indexBlockOffsetBytes)
+			fmt.Println("Merkle Tree Offset Bytes:", merkleTreeOffsetBytes)
+			dataOffset := utils.BytesToUint64(dataOffsetBytes)
+			bloomFilterOffset := utils.BytesToUint64(bloomFilterOffsetBytes)
+			indexSummeryOffset := utils.BytesToUint64(indexSummeryOffsetBytes)
+			indexBlockOffset := utils.BytesToUint64(indexBlockOffsetBytes)
+			merkleTreeOffset := utils.BytesToUint64(merkleTreeOffsetBytes)
+			fmt.Println("Reading compressed SSTable from a single file...")
+			fmt.Println("Data Offset:", dataOffset)
+			fmt.Println("Bloom Filter Offset:", bloomFilterOffset)
+			fmt.Println("Index Summary Offset:", indexSummeryOffset)
+			fmt.Println("Index Block Offset:", indexBlockOffset)
+			fmt.Println("Merkle Tree Offset:", merkleTreeOffset)
+			file.SetCurrentPosition(int(bloomFilterOffset))
+			_, data := file.ReadFromCurrentPosition(int(indexSummeryOffset - bloomFilterOffset)) // Read the data block
+			Filter := DeserializeBloomF(data)
+			if !Filter.Check(utils.Uint64ToBytes(keyUint64)) {
+				fmt.Println("Key not found in the Bloom filter.")
+				return
+			}
+
+			file.SetCurrentPosition(int(indexSummeryOffset))
+			offset, found := ReadIndexSummeryComprested(file, keyUint64)
+			if !found {
+				fmt.Println("Key not found in the index summary.")
+				return
+			}
+			fmt.Println("Key found in the index summary at offset:", offset)
+			file.SetCurrentPosition(int(indexBlockOffset + offset))
+			offset, found = ReadIndexBlockComprested(file, keyUint64)
+			if !found {
+				fmt.Println("Key not found in the index block.")
+				return
+			}
+			file.SetCurrentPosition(int(dataOffset + offset))
+			fmt.Println("Reading data block at offset:", dataOffset+offset)
+			data = ReadDataCompressed(file)
+			fmt.Println("Data read from the SSTable:", data)
+			fmt.Println("Key found in the index block at offset:", offset)
+			file.SetCurrentPosition(int(dataOffset + offset))
+		} else {
+			fmt.Println("Reading compressed SSTable from multiple files...")
+			// Read the paths from the TOC file
+			m, dataPathBytes := file.ReadFromCurrentPosition(8)
+			dataPathLength, n := binary.Uvarint(dataPathBytes)
+			file.MoveFromCurrentPosition(int(n) - int(m))
+			m, dataPath := file.ReadFromCurrentPosition(int(dataPathLength))
+			dataPathString := string(dataPath[:dataPathLength])
+			fmt.Println("Data Path:", dataPathString)
+			m, bloomFilterPathBytes := file.ReadFromCurrentPosition(8)
+			bloomFilterPathLength, n := binary.Uvarint(bloomFilterPathBytes)
+			file.MoveFromCurrentPosition(int(n) - int(m))
+			m, bloomFilterPath := file.ReadFromCurrentPosition(int(bloomFilterPathLength))
+			bloomFilterPathString := string(bloomFilterPath[:bloomFilterPathLength])
+			fmt.Println("Bloom Filter Path:", bloomFilterPathString)
+			m, indexSummeryPathBytes := file.ReadFromCurrentPosition(8)
+			indexSummeryPathLength, n := binary.Uvarint(indexSummeryPathBytes)
+			file.MoveFromCurrentPosition(int(n) - int(m))
+			m, indexSummeryPath := file.ReadFromCurrentPosition(int(indexSummeryPathLength))
+			indexSummeryPathString := string(indexSummeryPath[:indexSummeryPathLength])
+			fmt.Println("Index Summary Path:", indexSummeryPathString)
+			m, indexBlockPathBytes := file.ReadFromCurrentPosition(8)
+			indexBlockPathLength, n := binary.Uvarint(indexBlockPathBytes)
+			file.MoveFromCurrentPosition(int(n) - int(m))
+			m, indexBlockPath := file.ReadFromCurrentPosition(int(indexBlockPathLength))
+			indexBlockPathString := string(indexBlockPath[:indexBlockPathLength])
+			fmt.Println("Index Block Path:", indexBlockPathString)
+			m, merkleTreePathBytes := file.ReadFromCurrentPosition(8)
+			merkleTreePathLength, n := binary.Uvarint(merkleTreePathBytes)
+			file.MoveFromCurrentPosition(int(n) - int(m))
+			m, merkleTreePath := file.ReadFromCurrentPosition(int(merkleTreePathLength))
+			merkleTreePathString := string(merkleTreePath[:merkleTreePathLength])
+			fmt.Println("Merkle Tree Path:", merkleTreePathString)
+			// Read the Bloom filter from the specified path
+			bloomFilterFile := NewBlockManagerWrap(bloomFilterPathString, BlockManager)
+			m, bloomFilterSizeBytes := bloomFilterFile.ReadFromCurrentPosition(8)
+			bloomFilterSize, n := binary.Uvarint(bloomFilterSizeBytes)
+			bloomFilterFile.MoveFromCurrentPosition(int(n) - int(m))
+			m, bloomFilterData := bloomFilterFile.ReadFromCurrentPosition(int(bloomFilterSize))
+			bloomFilter := DeserializeBloomF(bloomFilterData)
+			if !bloomFilter.Check(utils.Uint64ToBytes(keyUint64)) {
+				fmt.Println("Key not found in the Bloom filter.")
+				return
+			}
+			// Read the index summary from the specified path
+			indexSummeryFile := NewBlockManagerWrap(indexSummeryPathString, BlockManager)
+			indexSummeryFile.SetCurrentPosition(0)
+			offset, found := ReadIndexSummeryComprested(indexSummeryFile, keyUint64)
+			if !found {
+				fmt.Println("Key not found in the index summary.")
+				return
+			}
+			fmt.Println("Key found in the index summary at offset:", offset)
+			// Read the index block from the specified path
+			indexBlockFile := NewBlockManagerWrap(indexBlockPathString, BlockManager)
+			indexBlockFile.SetCurrentPosition(0)
+			offset, found = ReadIndexBlockComprested(indexBlockFile, keyUint64)
+			if !found {
+				fmt.Println("Key not found in the index block.")
+				return
+			}
+			fmt.Println("Key found in the index block at offset:", offset)
+			// Read the data block from the specified path
+			dataFile := NewBlockManagerWrap(dataPathString, BlockManager)
+			dataFile.SetCurrentPosition(int(offset))
+			fmt.Println("Reading data block at offset:", offset)
+			data := ReadDataCompressed(dataFile)
+			if len(data) == 0 {
+				fmt.Println("No data found for the key.")
+				return
+			}
+			fmt.Println("Data read from the SSTable:", data)
+
+		}
+
+		fmt.Println("Reading compressed SSTable...")
+	} else {
+		fmt.Println("Reading uncompressed SSTable...")
+		if oneFile[0] == 1 {
+			_, dataOffsetBytes := file.ReadFromCurrentPosition(8)
+			_, bloomFilterOffsetBytes := file.ReadFromCurrentPosition(8)
+			_, indexSummeryOffsetBytes := file.ReadFromCurrentPosition(8)
+			_, indexBlockOffsetBytes := file.ReadFromCurrentPosition(8)
+			_, merkleTreeOffsetBytes := file.ReadFromCurrentPosition(8)
+			// Read the offsets from the file
+			fmt.Println("Offsets read from the file:")
+			fmt.Println("Data Offset Bytes:", dataOffsetBytes)
+			fmt.Println("Bloom Filter Offset Bytes:", bloomFilterOffsetBytes)
+			fmt.Println("Index Summary Offset Bytes:", indexSummeryOffsetBytes)
+			fmt.Println("Index Block Offset Bytes:", indexBlockOffsetBytes)
+			fmt.Println("Merkle Tree Offset Bytes:", merkleTreeOffsetBytes)
+			dataOffset := utils.BytesToUint64(dataOffsetBytes)
+			bloomFilterOffset := utils.BytesToUint64(bloomFilterOffsetBytes)
+			indexSummeryOffset := utils.BytesToUint64(indexSummeryOffsetBytes)
+			indexBlockOffset := utils.BytesToUint64(indexBlockOffsetBytes)
+			merkleTreeOffset := utils.BytesToUint64(merkleTreeOffsetBytes)
+			fmt.Println("Reading compressed SSTable from a single file...")
+			fmt.Println("Data Offset:", dataOffset)
+			fmt.Println("Bloom Filter Offset:", bloomFilterOffset)
+			fmt.Println("Index Summary Offset:", indexSummeryOffset)
+			fmt.Println("Index Block Offset:", indexBlockOffset)
+			fmt.Println("Merkle Tree Offset:", merkleTreeOffset)
+			file.SetCurrentPosition(int(bloomFilterOffset))
+			_, data := file.ReadFromCurrentPosition(int(indexSummeryOffset - bloomFilterOffset)) // Read the data block
+			Filter := DeserializeBloomF(data)
+			fmt.Println("Bloom filter deserialized successfully.", Filter.Check([]byte(key)))
+			if !Filter.Check([]byte(key)) {
+				fmt.Println("Key not found in the Bloom filter.")
+				return
+			}
+			file.SetCurrentPosition(int(indexSummeryOffset))
+			offset, found := ReadIndexSummery(file, key)
+			if !found {
+				fmt.Println("Key not found in the index summary.")
+				return
+			}
+			fmt.Println("Key found in the index summary at offset:", offset)
+			file.SetCurrentPosition(int(indexBlockOffset + offset))
+			offset, found = ReadIndexBlock(file, key)
+			if !found {
+				fmt.Println("Key not found in the index block.")
+				return
+			}
+			fmt.Println("Key found in the index block at offset:", offset)
+			file.SetCurrentPosition(int(dataOffset + offset))
+			fmt.Println("Reading data block at offset:", dataOffset+offset)
+			data = ReadData(file)
+			if len(data) == 0 {
+				fmt.Println("No data found for the key.")
+				return
+			}
+			fmt.Println("Data read from the SSTable:", data)
+		} else {
+			fmt.Println("Reading compressed SSTable from multiple files...")
+			// Read the paths from the TOC file
+			m, dataPathBytes := file.ReadFromCurrentPosition(8)
+			dataPathLength, n := binary.Uvarint(dataPathBytes)
+			file.MoveFromCurrentPosition(int(n) - int(m))
+			m, dataPath := file.ReadFromCurrentPosition(int(dataPathLength))
+			dataPathString := string(dataPath[:dataPathLength])
+			fmt.Println("Data Path:", dataPathString)
+			m, bloomFilterPathBytes := file.ReadFromCurrentPosition(8)
+			bloomFilterPathLength, n := binary.Uvarint(bloomFilterPathBytes)
+			file.MoveFromCurrentPosition(int(n) - int(m))
+			m, bloomFilterPath := file.ReadFromCurrentPosition(int(bloomFilterPathLength))
+			bloomFilterPathString := string(bloomFilterPath[:bloomFilterPathLength])
+			fmt.Println("Bloom Filter Path:", bloomFilterPathString)
+			m, indexSummeryPathBytes := file.ReadFromCurrentPosition(8)
+			indexSummeryPathLength, n := binary.Uvarint(indexSummeryPathBytes)
+			file.MoveFromCurrentPosition(int(n) - int(m))
+			m, indexSummeryPath := file.ReadFromCurrentPosition(int(indexSummeryPathLength))
+			indexSummeryPathString := string(indexSummeryPath[:indexSummeryPathLength])
+			fmt.Println("Index Summary Path:", indexSummeryPathString)
+			m, indexBlockPathBytes := file.ReadFromCurrentPosition(8)
+			indexBlockPathLength, n := binary.Uvarint(indexBlockPathBytes)
+			file.MoveFromCurrentPosition(int(n) - int(m))
+			m, indexBlockPath := file.ReadFromCurrentPosition(int(indexBlockPathLength))
+			indexBlockPathString := string(indexBlockPath[:indexBlockPathLength])
+			fmt.Println("Index Block Path:", indexBlockPathString)
+			m, merkleTreePathBytes := file.ReadFromCurrentPosition(8)
+			merkleTreePathLength, n := binary.Uvarint(merkleTreePathBytes)
+			file.MoveFromCurrentPosition(int(n) - int(m))
+			m, merkleTreePath := file.ReadFromCurrentPosition(int(merkleTreePathLength))
+			merkleTreePathString := string(merkleTreePath[:merkleTreePathLength])
+			fmt.Println("Merkle tree Path:", merkleTreePathString)
+			// Read the Bloom filter from the specified path
+			bloomFilterFile := NewBlockManagerWrap(bloomFilterPathString, BlockManager)
+			m, bloomFilterSizeBytes := bloomFilterFile.ReadFromCurrentPosition(8)
+			bloomFilterSize, n := binary.Uvarint(bloomFilterSizeBytes)
+			bloomFilterFile.MoveFromCurrentPosition(int(n) - int(m))
+			m, bloomFilterData := bloomFilterFile.ReadFromCurrentPosition(int(bloomFilterSize))
+			Filter := DeserializeBloomF(bloomFilterData)
+			fmt.Println("Bloom filter deserialized successfully.", Filter.Check([]byte(key)))
+			if !Filter.Check([]byte(key)) {
+				fmt.Println("Key not found in the Bloom filter.")
+				return
+			}
+			// Read the index summary from the specified path
+			indexSummeryFile := NewBlockManagerWrap(indexSummeryPathString, BlockManager)
+			indexSummeryFile.SetCurrentPosition(0)
+			offset, found := ReadIndexSummery(indexSummeryFile, key)
+			if !found {
+				fmt.Println("Key not found in the index summary.")
+				return
+			}
+			fmt.Println("Key found in the index summary at offset:", offset)
+			// Read the index block from the specified path
+			indexBlockFile := NewBlockManagerWrap(indexBlockPathString, BlockManager)
+			indexBlockFile.SetCurrentPosition(int(offset))
+			offset, found = ReadIndexBlock(indexBlockFile, key)
+			if !found {
+				fmt.Println("Key not found in the index block.")
+				return
+			}
+			fmt.Println("Key found in the index block at offset:", offset)
+			// Read the data block from the specified path
+			dataFile := NewBlockManagerWrap(dataPathString, BlockManager)
+			dataFile.SetCurrentPosition(int(offset))
+			fmt.Println("Reading data block at offset:", offset)
+			data := ReadData(dataFile)
+			if len(data) == 0 {
+				fmt.Println("No data found for the key.")
+				return
+			}
+			fmt.Println("Data read from the SSTable:", data)
+
+		}
+	}
+}
+
+func ReadIndexSummeryComprested(file *BlockManagerWrap, key uint64) (uint64, bool) {
+	n, buffer := file.ReadFromCurrentPosition(8)
+	lastKey, m := binary.Uvarint(buffer)
+	file.MoveFromCurrentPosition(int(m) - int(n)) // Move the file pointer to the next position
+	// Move the file pointer to the next position
+	n, buffer = file.ReadFromCurrentPosition(8)
+	firstKey, m := binary.Uvarint(buffer)
+	file.MoveFromCurrentPosition(int(m) - int(n))
+	if key < firstKey || key > lastKey {
+		fmt.Println("Key not found in the index summary.")
+		return 0, false
+	}
+	n, buffer = file.ReadFromCurrentPosition(8)
+	firstKeySummery, m := binary.Uvarint(buffer)
+	file.MoveFromCurrentPosition(int(m) - int(n))
+	n, buffer = file.ReadFromCurrentPosition(8)
+	secondKeySummery, m := binary.Uvarint(buffer)
+	file.MoveFromCurrentPosition(int(m) - int(n))
+	n, buffer = file.ReadFromCurrentPosition(8)
+	offset, m := binary.Uvarint(buffer)
+	file.MoveFromCurrentPosition(int(m) - int(n))
+	// Reading indes summery enyry per entry
+	for key > secondKeySummery {
+		n, buffer = file.ReadFromCurrentPosition(8)
+		firstKeySummery, m = binary.Uvarint(buffer)
+		file.MoveFromCurrentPosition(int(m) - int(n))
+		n, buffer = file.ReadFromCurrentPosition(8)
+		secondKeySummery, m = binary.Uvarint(buffer)
+		file.MoveFromCurrentPosition(int(m) - int(n))
+		n, buffer = file.ReadFromCurrentPosition(8)
+		offset, m = binary.Uvarint(buffer)
+		file.MoveFromCurrentPosition(int(m) - int(n))
+		if key < firstKeySummery {
+			fmt.Println("Key not found in the index summary.")
+			return 0, false
+		}
+	}
+	return offset, true
+}
+func ReadIndexBlockComprested(file *BlockManagerWrap, key uint64) (uint64, bool) {
+	// Read the index block entry
+	n, buffer := file.ReadFromCurrentPosition(8)
+	firstKey, m := binary.Uvarint(buffer)
+	file.MoveFromCurrentPosition(int(m) - int(n))
+	if key < firstKey {
+		fmt.Println("Key not found in the index block.")
+		return 0, false
+	}
+	n, buffer = file.ReadFromCurrentPosition(8)
+	offset, m := binary.Uvarint(buffer)
+	file.MoveFromCurrentPosition(int(m) - int(n))
+	for key >= firstKey {
+		if key == firstKey {
+			return offset, true
+		}
+
+		n, buffer = file.ReadFromCurrentPosition(8)
 		if n == 0 {
 			break // End of file reached
 		}
-		fmt.Println("File Type Data:", fileTypeData, " ")
-		i++
+		firstKey, m = binary.Uvarint(buffer)
+		file.MoveFromCurrentPosition(int(m) - int(n))
+		n, buffer = file.ReadFromCurrentPosition(8)
+		offset, m = binary.Uvarint(buffer)
+		file.MoveFromCurrentPosition(int(m) - int(n))
 	}
-	if fileTypeData[0] == 1 {
-		// Handle single file case
-		fmt.Println("Single file SSTable detected.")
-		/*
-			data := make([]byte, 8)
-			_, err := file.Read(data)
-			if err != nil {
-				panic(err)
-			}
-			firstKeyLength, n := binary.Uvarint(data)
-			file.Seek(int64(n)-8, 1) // Move the file pointer to the next position
-			fmt.Println("First Key Length:", firstKeyLength)
-			data = make([]byte, firstKeyLength)
-			file.Read(data)
-			firstKey := string(data)
-			fmt.Println("First Key:", firstKey)
-			data = make([]byte, 8)
-			_, err = file.Read(data)
-			if err != nil {
-				panic(err)
-			}
-			lastKeyLength, n := binary.Uvarint(data)
-			file.Seek(int64(n)-8, 1) // Move the file pointer to the next position
-			fmt.Println("Last Key Length:", lastKeyLength)
-			data = make([]byte, lastKeyLength)
-			file.Read(data)
-			lastKey := string(data)
-			fmt.Println("Last Key:", lastKey)
-			// Read the Bloom filter
-			data = make([]byte, 8)
-			_, err = file.Read(data)
-			if err != nil {
-				panic(err)
-			}
-			OffsetBlumFilte := utils.BytesToUint64(data) // Move the file pointer to the next position
-			fmt.Println("Offset Bloom Filter:", OffsetBlumFilte)
-			data = make([]byte, 8)
-			_, err = file.Read(data)
-			if err != nil {
-				panic(err)
-			}
-			OffsetIndexSummery := utils.BytesToUint64(data) // Move the file pointer to the next position
-			fmt.Println("Offset Index Summery:", OffsetIndexSummery)
-			data = make([]byte, 8)
-			_, err = file.Read(data)
-			if err != nil {
-				panic(err)
-			}
-			OffsetIndex := utils.BytesToUint64(data) // Move the file pointer to the next position
-			fmt.Println("Offset Index:", OffsetIndex)
-			data = make([]byte, 8)
-			_, err = file.Read(data)
-			if err != nil {
-				panic(err)
-			}
-			OffsetData := utils.BytesToUint64(data) // Move the file pointer to the next position
-			fmt.Println("Offset Data:", OffsetData)
-			// Read the Bloom filter data
-			BytesBlum := make([]byte, OffsetIndexSummery-OffsetBlumFilte)
-			file.Read(BytesBlum)
-			blumFilter := DeserializeBloomF(BytesBlum)
-			found := blumFilter.Check([]byte(key))
-			fmt.Println("File found", found)
-			//Loading Index Summery
-			file.Seek(int64(OffsetIndexSummery), 0) // Move to the index summary offset
-			FirstKey, SecondKey, IndexOffset := GetInexSumeeryEntry(file)
-			for key > SecondKey {
-				// Read the next index summary entry
-				FirstKey, SecondKey, IndexOffset = GetInexSumeeryEntry(file)
-				fmt.Println("First Key:", FirstKey, "Second Key:", SecondKey, "Index Offset:", IndexOffset)
-			}
-			if key < FirstKey {
-				fmt.Println("Key is less than the first key in the index summary.")
-			}
-			// Read the index block
-			fmt.Println(IndexOffset)
-
-			KeyData, DataOFfset := GetIndexBlockEntry(file)
-			KeyData, DataOFfset = GetIndexBlockEntry(file)
-			KeyData, DataOFfset = GetIndexBlockEntry(file)
-			KeyData, DataOFfset = GetIndexBlockEntry(file)
-			KeyData, DataOFfset = GetIndexBlockEntry(file)
-
-			fmt.Println("Key Data:", KeyData, "Data Offset:", DataOFfset)
-		*/
-	} else {
-		// Handle multiple files case
-		fmt.Println("Multiple files SSTable detected.")
-	}
-
+	fmt.Println("Key not found in the index block.")
+	return 0, false
 }
-func GetInexSumeeryEntry(file *os.File) (string, string, uint64) {
-	// Implement logic to read the index summary entry from the file
-	// This function should return the first key, last key, and index offset
-	data := make([]byte, 8)
-	_, err := file.Read(data)
-	if err != nil {
-		panic(err)
+func ReadDataCompressed(file *BlockManagerWrap) []byte {
+	// Read the data block at the specified offset Need to change when i get CRU and Timestamp
+	data := make([]byte, 0)
+	n, buffer := file.ReadFromCurrentPosition(8)
+	CRU, m := binary.Uvarint(buffer)
+	file.MoveFromCurrentPosition(int(m) - int(n))
+	fmt.Println("CRU:", CRU)
+	n, buffer = file.ReadFromCurrentPosition(8)
+	_, m = binary.Uvarint(buffer)
+	file.MoveFromCurrentPosition(int(m) - int(n))
+	n, buffer = file.ReadFromCurrentPosition(8)
+	valueSize, m := binary.Uvarint(buffer)
+	file.MoveFromCurrentPosition(int(m) - int(n))
+	if valueSize == 0 {
+		return []byte{} // No data to read
 	}
-	firstKeyLength, n := binary.Uvarint(data)
-	file.Seek(int64(n)-8, 1) // Move the file pointer to the next position\
-	firstKeyData := make([]byte, firstKeyLength)
-	_, err = file.Read(firstKeyData)
-	if err != nil {
-		panic(err)
-	}
-	firstKey := string(firstKeyData)
-	data = make([]byte, 8)
-	_, err = file.Read(data)
-	if err != nil {
-		panic(err)
-	}
-	lastKeyLength, n := binary.Uvarint(data)
-	file.Seek(int64(n)-8, 1) // Move the file pointer to the next position
-	lastKeyData := make([]byte, lastKeyLength)
-	_, err = file.Read(lastKeyData)
-	if err != nil {
-		panic(err)
-	}
-	lastKey := string(lastKeyData)
-	data = make([]byte, 8)
-	_, err = file.Read(data)
-	if err != nil {
-		panic(err)
-	}
-	indexOffset, n := binary.Uvarint(data)
-	file.Seek(int64(n)-8, 1) // Move the file pointer to the next position
-	return firstKey, lastKey, indexOffset
+	n, data = file.ReadFromCurrentPosition(int(valueSize - 1))
+	return data
 }
-func GetIndexBlockEntry(file *os.File) (string, uint64) {
-	data := make([]byte, 8)
-	_, err := file.Read(data)
-	if err != nil {
-		panic(err)
+func ReadIndexSummery(file *BlockManagerWrap, key string) (uint64, bool) {
+	n, buffer := file.ReadFromCurrentPosition(8)
+	lastKeyLenght, m := binary.Uvarint(buffer)
+	file.MoveFromCurrentPosition(int(m) - int(n)) // Move the file pointer to the next position
+	// Move the file pointer to the next position
+	n, lastKeyBytes := file.ReadFromCurrentPosition(int(lastKeyLenght))
+	lastKey := string(lastKeyBytes[:lastKeyLenght])
+	n, buffer = file.ReadFromCurrentPosition(8)
+	firstKeyLenght, m := binary.Uvarint(buffer)
+	file.MoveFromCurrentPosition(int(m) - int(n))
+	n, firstKeyBytes := file.ReadFromCurrentPosition(int(firstKeyLenght))
+	firstKey := string(firstKeyBytes)
+	fmt.Println("First Key:", firstKey, "Last Key:", lastKey)
+	if key < firstKey || key > lastKey {
+		fmt.Println("Key not found in the index summary.")
+		return 0, false
 	}
-	//fmt.Println("Data Read:", data)
-	firstKeyLength, n := binary.Uvarint(data)
-	//fmt.Print("First Key Length:", firstKeyLength, " ", int64(n)-8, " ")
-	// Ovaj f.Seek samo prestaje da radi
-	file.Seek(int64(n)-8, 1) // Move the file pointer to the next position
-	file.Read(data)
-	//fmt.Println("Data Length:", len(data), " ", data)
-	file.Seek(-8, 1)
+	n, buffer = file.ReadFromCurrentPosition(8)
+	firstKeySummeryLenght, m := binary.Uvarint(buffer)
+	file.MoveFromCurrentPosition(int(m) - int(n))
+	//fmt.Println("First Key Summery Length:", firstKeySummeryLenght)
+	_, firstKeySummeryBytes := file.ReadFromCurrentPosition(int(firstKeySummeryLenght))
+	firstKeySummery := string(firstKeySummeryBytes)
+	//fmt.Println("First Key Summery:", firstKeySummery)
+	n, buffer = file.ReadFromCurrentPosition(8)
+	secondKeySummeryLenght, m := binary.Uvarint(buffer)
+	//fmt.Println("Second Key Summery Length:", secondKeySummeryLenght)
+	file.MoveFromCurrentPosition(int(m) - int(n))
+	_, secondKeySummeryBytes := file.ReadFromCurrentPosition(int(secondKeySummeryLenght))
+	secondKeySummery := string(secondKeySummeryBytes)
+	//fmt.Println("Second Key Summery:", secondKeySummery)
+	n, buffer = file.ReadFromCurrentPosition(8)
+	offset, m := binary.Uvarint(buffer)
+	file.MoveFromCurrentPosition(int(m) - int(n))
+	// Reading indes summery enyry per
 
-	firstKeyData := make([]byte, firstKeyLength)
-	_, err = file.Read(firstKeyData)
-	if err != nil {
-		panic(err)
+	for key > secondKeySummery {
+		//fmt.Println("Key:", firstKey, "Second Key Summery:", secondKeySummery)
+		n, buffer = file.ReadFromCurrentPosition(8)
+		firstKeySummeryLenght, m := binary.Uvarint(buffer)
+		file.MoveFromCurrentPosition(int(m) - int(n))
+		_, firstKeySummeryBytes := file.ReadFromCurrentPosition(int(firstKeySummeryLenght))
+		firstKeySummery = string(firstKeySummeryBytes)
+		n, buffer = file.ReadFromCurrentPosition(8)
+		secondKeySummeryLenght, m := binary.Uvarint(buffer)
+		file.MoveFromCurrentPosition(int(m) - int(n))
+		_, secondKeySummeryBytes := file.ReadFromCurrentPosition(int(secondKeySummeryLenght))
+		secondKeySummery = string(secondKeySummeryBytes)
+		n, buffer = file.ReadFromCurrentPosition(8)
+		offset, m = binary.Uvarint(buffer)
+		file.MoveFromCurrentPosition(int(m) - int(n))
+		if key < firstKeySummery {
+			fmt.Println("Key not found in the index summary.")
+			return 0, false
+		}
 	}
-	firstKey := string(firstKeyData)
-
-	data = make([]byte, 8)
-	_, err = file.Read(data)
-	if err != nil {
-		panic(err)
-	}
-	offset, n := binary.Uvarint(data)
-	//fmt.Println("Offset:", offset, " ", n-8)
-	file.Seek(int64(n)-8, 1) // Move the file pointer to the next position
-
-	return firstKey, offset
+	return offset, true
 }
-func GetDataBlock(file *os.File) string {
-	return ""
+func ReadIndexBlock(file *BlockManagerWrap, key string) (uint64, bool) {
+	// Read the index block entry
+	n, buffer := file.ReadFromCurrentPosition(8)
+	firstKeyLenght, m := binary.Uvarint(buffer)
+	file.MoveFromCurrentPosition(int(m) - int(n))
+	//fmt.Println("First Key Length:", firstKeyLenght)
+	_, firstKeyBytes := file.ReadFromCurrentPosition(int(firstKeyLenght))
+	firstKey := string(firstKeyBytes[:firstKeyLenght])
+	if key < firstKey {
+		fmt.Println("Key not found in the index block.")
+		return 0, false
+	}
+	n, buffer = file.ReadFromCurrentPosition(8)
+	offset, m := binary.Uvarint(buffer)
+	file.MoveFromCurrentPosition(int(m) - int(n))
+	for key >= firstKey {
+		if key == firstKey {
+			return offset, true
+		}
+
+		n, buffer = file.ReadFromCurrentPosition(8)
+		if n == 0 {
+			break // End of file reached
+		}
+		firstKeyLenght, m = binary.Uvarint(buffer)
+		file.MoveFromCurrentPosition(int(m) - int(n))
+		_, firstKeyBytes = file.ReadFromCurrentPosition(int(firstKeyLenght))
+		firstKey = string(firstKeyBytes[:firstKeyLenght])
+		n, buffer = file.ReadFromCurrentPosition(8)
+		offset, m = binary.Uvarint(buffer)
+		file.MoveFromCurrentPosition(int(m) - int(n))
+	}
+	fmt.Println("Key not found in the index block.")
+	return 0, false
+}
+func ReadData(file *BlockManagerWrap) []byte {
+	// Read the data block at the specified offset Need to change when i get CRU and Timestamp
+	data := make([]byte, 0)
+	n, buffer := file.ReadFromCurrentPosition(8)
+	CRU, m := binary.Uvarint(buffer)
+	file.MoveFromCurrentPosition(int(m) - int(n))
+	fmt.Println("CRU:", CRU)
+	n, buffer = file.ReadFromCurrentPosition(8)
+	keySize, m := binary.Uvarint(buffer)
+	file.MoveFromCurrentPosition(int(m) - int(n))
+	n, buffer = file.ReadFromCurrentPosition(8)
+	valueSize, m := binary.Uvarint(buffer)
+	file.MoveFromCurrentPosition(int(m) - int(n))
+	n, buffer = file.ReadFromCurrentPosition(int(keySize))
+	key := string(buffer[:keySize])
+	fmt.Println("Key:", key)
+	if valueSize == 0 {
+		return []byte{} // No data to read
+	}
+	n, data = file.ReadFromCurrentPosition(int(valueSize - 1))
+	return data
 }
