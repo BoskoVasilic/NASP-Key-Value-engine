@@ -85,7 +85,7 @@ func (bm *BlockManager) WriteBlock(filePath string, blockNumber int, data []byte
 	if currentLength+len(data) > remainingSpace {
 		block, lastBlock = bm.AddDataWithBiggerSizeToBlock(currentLength, remainingSpace, data, block)
 	} else if currentLength+len(data) <= remainingSpace {
-		block, _ = bm.AddDataWithCorrectSizeToBlock(currentLength, data, block)
+		block, _, _ = bm.AddDataWithCorrectSizeToBlock(currentLength, data, block)
 	}
 
 	err := bm.WriteToDisk(filePath, blockNumber, block)
@@ -97,7 +97,7 @@ func (bm *BlockManager) GetCurrentLength(data []byte) int {
 	return int(binary.LittleEndian.Uint32(data[BLOCK_SIZE-BLOCK_HEADER_SIZE:]))
 }
 
-func (bm *BlockManager) AddDataWithCorrectSizeToBlock(currentLength int, data []byte, block []byte) ([]byte, int) {
+func (bm *BlockManager) AddDataWithCorrectSizeToBlock(currentLength int, data []byte, block []byte) ([]byte, int, []byte) {
 	copy(block[currentLength:], data)
 	newLength := currentLength + len(data)
 	var additionalBlock []byte
@@ -107,7 +107,7 @@ func (bm *BlockManager) AddDataWithCorrectSizeToBlock(currentLength int, data []
 		additionalBlock = make([]byte, BLOCK_SIZE)
 		binary.LittleEndian.PutUint32(additionalBlock[BLOCK_SIZE-BLOCK_HEADER_SIZE:], uint32(0))
 	}
-	return block, newLength
+	return block, newLength, additionalBlock
 }
 
 func (bm *BlockManager) AddDataWithEqualSizeToBlock(currentLength int, data []byte, block []byte) ([]byte, []byte) {
