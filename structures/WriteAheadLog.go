@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"hash/crc32"
 	"log"
+	"math"
 	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -25,7 +27,9 @@ const (
 	VALUE_SIZE_START = KEY_SIZE_START + KEY_SIZE_SIZE
 	KEY_START        = VALUE_SIZE_START + VALUE_SIZE_SIZE
 
-	SEGMENT_SIZE = BLOCK_SIZE * 4 // user specified number of blocks in a segment get from config file
+	SEGMENT_SIZE       = 8000 * 4 // user specified number of blocks in a segment get from config file
+	RECORD_TYPE_SIZE   = 1
+	BLOCK_USABLE_SPACE = BLOCK_SIZE - RECORD_TYPE_SIZE
 )
 
 type WriteAheadLogElement struct {
@@ -39,12 +43,18 @@ type WriteAheadLogElement struct {
 }
 
 type WriteAheadLog struct {
-	elements []byte
+	filePaths     []WriteAheadLogPaths
+	lastSegment   []WriteAheadLogSegment
+	lastLogNumber int
+	lowWaterMark  int
 }
 
 type WriteAheadLogSegment struct {
-	index    int
-	elements []WriteAheadLogElement
+	logNumber         int
+	offset            int
+	segmentPath       string
+	elements          []WriteAheadLogElement
+	segmentBlocksLeft int
 }
 
 type WriteAheadLogPaths struct {
@@ -68,16 +78,46 @@ func NewWriteAheadLogElement(keySize uint64, valueSize uint64, key []byte, value
 
 func NewWriteAheadLog() *WriteAheadLog {
 	return &WriteAheadLog{
-		elements: make([]byte, 0),
+		//elements: make([]byte, 0),
 	}
 }
 
-func (w *WriteAheadLog) AddElement(element *WriteAheadLogElement) {
-	w.elements = append(w.elements, element.Serialize()...)
-	WriteToFile(element)
+func NewWriteAheadLogSegment(logNumber int, offset int, segmentPath string) *WriteAheadLogSegment {
+	return &WriteAheadLogSegment{
+		logNumber:         logNumber,
+		offset:            offset,
+		segmentPath:       segmentPath,
+		elements:          make([]WriteAheadLogElement, 0),
+		segmentBlocksLeft: SEGMENT_SIZE / BLOCK_SIZE,
+	}
 }
 
-func openWriteAheadLogFile(openFlag int) *os.File {
+func GetFilePaths() /* []WriteAheadLogPaths */ error {
+	err := filepath.Walk("./wal/", func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			fmt.Printf("Error accessing path %q: %v\n", path, err)
+			return err
+		}
+		if !info.IsDir() {
+			fmt.Println(path)
+		}
+		return nil
+	})
+
+	if err != nil {
+		fmt.Printf("Error walking the path %q: %v\n", "./wal/", err)
+	}
+
+	return err
+
+}
+
+/* func (w *WriteAheadLog) AddElement(element *WriteAheadLogElement) {
+	w.elements = append(w.elements, element.Serialize()...)
+	WriteToFile(element)
+} */
+
+/* func openWriteAheadLogFile(openFlag int) *os.File {
 	file, err := os.OpenFile("wal/writeAheadLog.log", openFlag|os.O_CREATE, 0666)
 	if err != nil {
 		log.Fatal(err)
@@ -91,19 +131,55 @@ func closeWriteAheadLogFile(file *os.File) {
 		log.Fatal(err)
 		return
 	}
-}
+} */
 
-func WriteToFile(element *WriteAheadLogElement) {
-	file := openWriteAheadLogFile(os.O_APPEND)
-	defer closeWriteAheadLogFile(file)
+func (s *WriteAheadLogSegment) WriteToFile(element *WriteAheadLogElement, blockManager *BlockManagerWrap) {
+	/* file := openWriteAheadLogFile(os.O_APPEND)
+	defer closeWriteAheadLogFile(file) */
 
-	_, err := file.Write(element.Serialize())
-	if err != nil {
-		log.Fatal(err)
+	data := element.Serialize()
+	newBlock := make([]byte, BLOCK_SIZE)
+	if len(data) > blockManager.currentBufferUsedSpace {
+		allBlocksToWrite := make([]byte, 0)
+		numBlocks := math.Ceil(float64(len(data)) / float64(BLOCK_USABLE_SPACE))
+		for i := 0; i < int(numBlocks); i++ {
+			start := i * BLOCK_USABLE_SPACE
+			end := start + BLOCK_USABLE_SPACE
+			if end > len(data) {
+				end = len(data)
+			}
+			blockData := data[start:end]
+
+			if i == 0 {
+				newBlock[0] = byte(FIRST)
+			} else if i == int(numBlocks)-1 {
+				newBlock[0] = byte(LAST)
+			} else {
+				newBlock[0] = byte(MIDDLE)
+			}
+
+			if i == int(numBlocks)-1 {
+				allBlocksToWrite = append(allBlocksToWrite, byte(LAST))
+				allBlocksToWrite = append(allBlocksToWrite, blockData...)
+			} else {
+				copy(newBlock[RECORD_TYPE_SIZE:], blockData)
+				allBlocksToWrite = append(allBlocksToWrite, newBlock...)
+			}
+		}
+		if int(numBlocks) > s.segmentBlocksLeft {
+			blockManager.WriteToFile(allBlocksToWrite[s.segmentBlocksLeft*BLOCK_SIZE:])
+			s.segmentBlocksLeft = 0
+			newSegment := NewWriteAheadLogSegment(s.logNumber+1, 0, fmt.Sprintf("wal/segment_%d.log", s.logNumber+1))
+			fmt.Printf("Creating new segment: %s\n", newSegment.segmentPath)
+		} else {
+			blockManager.WriteToFile(allBlocksToWrite)
+			s.segmentBlocksLeft -= int(numBlocks)
+		}
+
 	}
 }
 
-func (w *WriteAheadLog) ReadFromFile() {
+/* func (w *WriteAheadLog) ReadFromFile() {
 	file := openWriteAheadLogFile(os.O_RDWR)
 	defer closeWriteAheadLogFile(file)
 
@@ -191,7 +267,7 @@ func (w *WriteAheadLog) ReadFromFile() {
 		i += int(elementSize)
 	}
 
-}
+} */
 
 func (w *WriteAheadLogElement) Serialize() []byte {
 	buffer := new(bytes.Buffer)
