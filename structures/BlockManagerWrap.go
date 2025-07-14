@@ -55,6 +55,10 @@ func (bmw *BlockManagerWrap) SetCurrentPosition(position int) {
 	bmw.currentPosition = position
 }
 
+func (bmw *BlockManagerWrap) GetLastWrittenByteOffset() int {
+	return bmw.fileEnd - BLOCK_SIZE + bmw.currentBufferUsedSpace
+}
+
 func (bmw *BlockManagerWrap) ReadFromCurrentPosition(bytesNeeded int) (int, []byte) {
 	successfullyRead, data := bmw.blockManager.ReadBytesByOffset(bmw.filePath, bmw.currentPosition, bytesNeeded)
 	bmw.currentPosition += bytesNeeded
