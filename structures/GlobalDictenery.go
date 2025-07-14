@@ -22,16 +22,21 @@ func (g GlobalDictionary) Flush() {
 	// Flush the file buffer to ensure all data is written to disk
 	g.file.FlushBuffer(false)
 }
-func AddItems[T any, H any](globalDictionary *GlobalDictionary, itterator *utils.Iterator[T, H, *Entry]) *utils.Iterator[[]*ExportEntry, int, *ExportEntry] {
+func AddItems[T any, H any](globalDictionary *GlobalDictionary, itterator *utils.Iterator[T, H, *Entry]) (*utils.Iterator[[]*ExportEntry, int, *ExportEntry], string, string) {
 	// Treba da postoji flush opcija
 	defer globalDictionary.file.FlushBuffer(false)
 	list := auxiliary.NewListWithIterator[ExportEntry]()
+	firsKey := ""
+	lastKey := ""
 	for true {
 		entry, ok := itterator.Next()
 		if !ok {
 			break
 		}
-
+		if firsKey == "" {
+			firsKey = entry.key
+		}
+		lastKey = entry.key
 		var newKey uint64
 		returnData, _ := globalDictionary.SkipList.Get(entry.key)
 		if returnData.key != entry.key {
@@ -47,18 +52,23 @@ func AddItems[T any, H any](globalDictionary *GlobalDictionary, itterator *utils
 		return a.key < b.key
 	})
 	//Hear i need to flush document
-	return list.GetIter()
+	return list.GetIter(), firsKey, lastKey
 }
-func AddItemsWithNoCompresion[T any, H any](globalDictionary *GlobalDictionary, itterator *utils.Iterator[T, H, *Entry]) *utils.Iterator[[]*Entry, int, *Entry] {
+func AddItemsWithNoCompresion[T any, H any](globalDictionary *GlobalDictionary, itterator *utils.Iterator[T, H, *Entry]) (*utils.Iterator[[]*Entry, int, *Entry], string, string) {
 	// Treba da postoji flush opcija
 	defer globalDictionary.file.FlushBuffer(false)
 	list := auxiliary.NewListWithIterator[Entry]()
+	firsKey := ""
+	lastKey := ""
 	for true {
 		entry, ok := itterator.Next()
 		if !ok {
 			break
 		}
-
+		if firsKey == "" {
+			firsKey = entry.key
+		}
+		lastKey = entry.key
 		returnData, _ := globalDictionary.SkipList.Get(entry.key)
 		if returnData.key != entry.key {
 			globalDictionary.AddItem(entry)
@@ -68,7 +78,7 @@ func AddItemsWithNoCompresion[T any, H any](globalDictionary *GlobalDictionary, 
 		//fmt.Println("Adding item with key:", entry.key, "and new key:", newKey, "to the global dictionary.", globalDictionary.Size)
 	}
 	//Hear i need to flush document
-	return list.GetIter()
+	return list.GetIter(), firsKey, lastKey
 }
 
 func AddItmsString(globalDictionary *GlobalDictionary, key string) {

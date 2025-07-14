@@ -3,6 +3,7 @@ package structures
 import (
 	"KVengine/utils"
 	"fmt"
+	"time"
 )
 
 type LSMTree struct {
@@ -33,22 +34,42 @@ func (lt *LSMTree) AddLevel(path string) {
 		lt.Levels = append(lt.Levels, &[]*string{})
 	}
 	level1 := lt.Levels[0]
-	*level1 = append(*level1, &path)
+	PathStringAdded := []*string{&path}
+	*level1 = append(PathStringAdded, *level1...)
 	lt.LevelsSize[0]++
 }
-func (lt *LSMTree) Merge(first int, last int, level int, dictenery *GlobalDictionary) {
+func (lt *LSMTree) Merge(first int, last int, level int, dictenery *GlobalDictionary, oneFile bool, summeryIndex uint64) string {
 	DataCompresedLists := make([]bool, 0)
 	MaxSizes := make([]int, 0)
 	OneFileLise := make([]bool, 0)
 	levleSData := *(lt.Levels[level])
+	last = last + 1
 	ForceCompresion := false
+	firstKey := ""
+	lastKey := ""
 	for i := first; i < last; i++ {
 		file := NewBlockManagerWrap(*levleSData[i], lt.BlockMenager)
 		_, IsCompresed := file.ReadFromCurrentPosition(1)
 		_, OneFile := file.ReadFromCurrentPosition(1)
 		fmt.Println("IsCompresed:", IsCompresed[0])
+		fmt.Println("_________________________________________________-")
 		_, data := file.ReadFromCurrentPosition(8)
 		maxSizeC := utils.BytesToUint64(data)
+		file.SetCurrentPosition(0)
+		fmt.Println("Path", *levleSData[i])
+		stringKeyFirst, stringKeyLast := GetFirstAndLAstKeyCompresed(*levleSData[i], lt.BlockMenager)
+		if firstKey == "" {
+			firstKey = stringKeyFirst
+		}
+		if lastKey == "" {
+			lastKey = stringKeyLast
+		}
+		if firstKey > stringKeyFirst {
+			firstKey = stringKeyFirst
+		}
+		if lastKey < stringKeyLast {
+			lastKey = stringKeyLast
+		}
 		if IsCompresed[0] == 1 {
 			DataCompresedLists = append(DataCompresedLists, true)
 			ForceCompresion = true
@@ -68,7 +89,7 @@ func (lt *LSMTree) Merge(first int, last int, level int, dictenery *GlobalDictio
 
 		pq := NewPriorityQueue(func(a, b *MergeData[ExportEntry]) bool {
 			if a.GetRecord().GetKey() == b.GetRecord().GetKey() {
-				return a.GetRecord().time < b.GetRecord().time
+				return a.GetRecord().time > b.GetRecord().time
 			}
 			return a.GetRecord().GetKey() < b.GetRecord().GetKey()
 		})
@@ -104,13 +125,6 @@ func (lt *LSMTree) Merge(first int, last int, level int, dictenery *GlobalDictio
 				fileIndex := GetIndexFile(*levleSData[i], lt.BlockMenager)
 				list_Enterys := GetListInex(fileIndex, uint64(MaxSizes[i-first]))
 				list_ExportEntries := dictenery.ConvertListToExportEntry(list_Enterys)
-				fmt.Println("_________________________________________________________________________________")
-				j := 0
-				for j < MaxSizes[i-first] {
-					fmt.Println("List Export Entries:", list_ExportEntries.GetEntrie(j).GetKey(), "Value:", list_ExportEntries.GetEntrie(j).value, "Deleted:", list_ExportEntries.GetEntrie(j).tombstone, "Time:", list_ExportEntries.GetEntrie(j).time)
-					j++
-				}
-				fmt.Println("List Export Entries:", list_ExportEntries)
 				mergaData := NewMergeData[ExportEntry](file, list_ExportEntries, func(mergeData *MergeData[ExportEntry]) {
 					if mergeData.Read >= mergeData.maxSize {
 						//fmt.Println("Reading more than max size")
@@ -194,15 +208,22 @@ func (lt *LSMTree) Merge(first int, last int, level int, dictenery *GlobalDictio
 			pq.Push(top)
 			return recordCopy, true
 		})
-		record, ok := iter.Next()
-		for ok {
-			fmt.Println("Record:", record.GetKey(), "Value:", record.value, "Deleted:", record.tombstone, "Time:", record.time)
-			record, ok = iter.Next()
+		startpath := "SSTabel" + time.Now().Format(time.RFC1123)
+		fmt.Println("Start path:", startpath)
+		sum := 0
+		for i := first; i < last; i++ {
+			sum += MaxSizes[i-first]
 		}
+		Fileter := NewBloomFilterWithParams(sum, 0.01)
+		path1 := WriteToFilesCompresed(startpath, oneFile, lt.BlockMenager, sum, Fileter, summeryIndex, iter, firstKey, lastKey)
+		fmt.Println("Path1:", path1)
+		lt.AddtoNextLevel(level+1, path1)
+		return path1
 	} else {
 		pq := NewPriorityQueue(func(a, b *MergeData[Entry]) bool {
 			if a.GetRecord().GetKey() == b.GetRecord().GetKey() {
-				return a.GetRecord().time < b.GetRecord().time
+				return a.GetRecord().time > b.GetRecord().time
+
 			}
 			return a.GetRecord().GetKey() < b.GetRecord().GetKey()
 		})
@@ -289,10 +310,209 @@ func (lt *LSMTree) Merge(first int, last int, level int, dictenery *GlobalDictio
 			pq.Push(top)
 			return recordCopy, true
 		})
-		record, ok := iter.Next()
-		for ok {
-			fmt.Println("Record:", record.GetKey(), "Value:", record.value, "Deleted:", record.deleted, "Time:", record.time)
-			record, ok = iter.Next()
+		startpath := "SSTabel" + time.Now().Format(time.RFC1123)
+		fmt.Println("Start path:", startpath)
+		sum := 0
+		for i := first; i < last; i++ {
+			sum += MaxSizes[i-first]
+		}
+		Fileter := NewBloomFilterWithParams(sum, 0.01)
+		path1 := WriteToFile(startpath, oneFile, lt.BlockMenager, sum, Fileter, summeryIndex, iter, firstKey, lastKey)
+		fmt.Println("Write to file completed")
+		fmt.Println("First key"+firstKey, "Last key: "+lastKey)
+		fmt.Println("Path1:", path1)
+		lt.AddtoNextLevel(level+1, path1)
+		return path1
+	}
+}
+func (lt *LSMTree) AddtoNextLevel(level int, path string) {
+	if level >= lt.maxLevel {
+		level = lt.maxLevel - 1 // Ensure we do not exceed the maximum level
+		if len(lt.Levels) <= level {
+			// If the Levels slice is empty, initialize it with a new slice.
+			lt.Levels = append(lt.Levels, &[]*string{})
+		}
+		if lt.LevelsSize[level] == 0 {
+			// If the size of the current level is zero, initialize it with a new slice.
+			lt.Levels[level] = &[]*string{}
+		}
+		level1 := lt.Levels[level]
+		appended := []*string{&path}
+		*level1 = append(*level1, appended...)
+		lt.LevelsSize[level]++
+		return
+	}
+	if len(lt.Levels) <= level {
+		// If the Levels slice is empty, initialize it with a new slice.
+		lt.Levels = append(lt.Levels, &[]*string{})
+	}
+	if lt.LevelsSize[level] == 0 {
+		// If the size of the current level is zero, initialize it with a new slice.
+		lt.Levels[level] = &[]*string{}
+	}
+	level1 := lt.Levels[level]
+	appended := []*string{&path}
+	*level1 = append(appended, *level1...)
+	lt.LevelsSize[level]++
+}
+func (lt *LSMTree) StartMerging(configMergeFunction int, dictenery *GlobalDictionary, oneFile bool, summeryIndex uint64, MergeSize int) {
+	i := 0
+	for i < len(lt.Levels) {
+		if lt.LevelsSize[i] > 0 {
+			if configMergeFunction == 0 {
+				first, last, levle, ok := lt.GetSizeTieredMerge(i, MergeSize)
+				if ok {
+					fmt.Println("Merging level:", i, "from", first, "to", last, "with level:", levle)
+					path := lt.Merge(first, last, levle, dictenery, oneFile, summeryIndex)
+					fmt.Println("Merged path:", path)
+					// After merging, we need to remove the merged files from the current level
+					lt.LevelsSize[i] -= (last - first + 1)
+					// Remove the merged files from the current level
+					level := lt.Levels[i]
+					fmt.Println("-------------------------------------------------------------------------")
+					fmt.Println("Removing files from level:", i, "from index", first, "to", last)
+					for j := first; j <= last; j++ {
+						fmt.Println("Removing file at index:", j, "from level", i, "file:", *(*level)[j])
+						RemoveSStabel(*(*level)[j], lt.BlockMenager)
+					}
+					fmt.Println("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+					j := 0
+					newLevel := make([]*string, 0)
+					for j < len(*level) {
+						if j < first || j > last {
+							newLevel = append(newLevel, (*level)[j])
+						}
+						j++
+					}
+					// Update the level with the new level without the merged files
+					lt.Levels[i] = &newLevel
+					j = 0
+					levelSerch := *lt.Levels[i]
+					for j < len(levelSerch) {
+						fmt.Println("Level at index", j, "has path", levelSerch[j])
+					}
+					fmt.Println("--____________________--")
+				}
+			} else {
+				// Implement other merge strategies here
+				first, last, levle, ok := lt.GetLevelTieredMerge(i, MergeSize)
+				if ok {
+					fmt.Println("Merging level:", i, "from", first, "to", last, "with level:", levle)
+					path := lt.Merge(first, last, levle, dictenery, oneFile, summeryIndex)
+					fmt.Println("Merged path:", path)
+					// After merging, we need to remove the merged files from the current level
+					lt.LevelsSize[i] -= (last - first + 1)
+					// Remove the merged files from the current level
+					level := lt.Levels[i]
+					fmt.Println("-------------------------------------------------------------------------")
+					fmt.Println("Removing files from level:", i, "from index", first, "to", last)
+					for j := first; j <= last; j++ {
+						fmt.Println("Removing file at index:", j, "from level", i, "file:", *(*level)[j])
+						RemoveSStabel(*(*level)[j], lt.BlockMenager)
+					}
+					fmt.Println("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+					j := 0
+					newLevel := make([]*string, 0)
+					for j < len(*level) {
+						if j < first || j > last {
+							newLevel = append(newLevel, (*level)[j])
+						}
+						j++
+					}
+					// Update the level with the new level without the merged files
+					lt.Levels[i] = &newLevel
+					j = 0
+					levelSerch := *lt.Levels[i]
+					for j < len(levelSerch) {
+						fmt.Println("Level at index", j, "has path", levelSerch[j])
+					}
+					fmt.Println("--____________________--")
+				}
+				fmt.Println("Other merge strategies not implemented yet")
+			}
+
+		}
+		i++
+	}
+}
+func (lt *LSMTree) GetSizeTieredMerge(levle int, mergeSize int) (int, int, int, bool) {
+	if levle >= lt.maxLevel {
+		return 0, 0, 0, false // Ensure we do not exceed the maximum level
+	}
+	if len(lt.Levels) <= levle || lt.LevelsSize[levle] == 0 {
+		return 0, 0, 0, false // No data to merge
+	}
+	first := 0
+	last := lt.LevelsSize[levle]
+	if last < mergeSize {
+		return first, last, levle, false // Not enough data to merge
+	}
+	if last >= mergeSize {
+		last = mergeSize - 1 // Limit to merge size
+	}
+	return first, last, levle, true // Ready for merging
+}
+func (lt *LSMTree) GetLevelTieredMerge(level int, mergeSize int) (int, int, int, bool) {
+	if level >= lt.maxLevel {
+		return level, 0, 0, false // Ensure we do not exceed the maximum level
+	}
+	if len(lt.Levels) <= level || lt.LevelsSize[level] == 0 {
+		return level, 0, 0, false // No data to merge
+	} //Make merging easy ready first and last key
+	if lt.LevelsSize[level] < mergeSize {
+		return level, 0, 0, false // Not enough data to merge
+	}
+	last := lt.LevelsSize[level] - 1
+	path := *(*lt.Levels[level])[last]
+	fmt.Println("Path to last file in level", level, ":", path)
+	FirstFKey, LastFKey := GetFirstAndLAstKeyCompresed(path, lt.BlockMenager)
+	last -= 1
+	for last >= 0 {
+		path := *(*lt.Levels[level])[last]
+		fmt.Println("Path to last file in level", level, ":", path)
+		FirstSKey, LastSKey := GetFirstAndLAstKeyCompresed(path, lt.BlockMenager)
+		if LastSKey >= FirstFKey || FirstSKey <= LastFKey {
+			return last, mergeSize - 1, level, true // Overlap detected in either order, ready for merging
+		}
+		last--
+	}
+	// Rearenge lsm tree
+	last = lt.LevelsSize[level] - 1
+	pathToLast := *(*lt.Levels[level])[last]
+	// If we reach here, it means there is no overlap, so we cant merge just send the last file to next level
+	// Remove the last file from the current level
+	levelData := lt.Levels[level]
+	newLevelData := make([]*string, 0)
+	for i := 0; i < len(*levelData); i++ {
+		if i != last {
+			newLevelData = append(newLevelData, (*levelData)[i])
 		}
 	}
+	lt.Levels[level] = &newLevelData
+	lt.LevelsSize[level]--
+	lt.AddtoNextLevel(level+1, pathToLast)
+	return level, 0, lt.LevelsSize[level] - 1, false // Ready for merging
+}
+func (lt *LSMTree) ReadSStabels(key string, bm *BlockManager, dictenery *GlobalDictionary) (*Entry, bool) {
+	// Implement reading from SSTable here
+	// This function should read the SSTable and return the ExportEntry for the given key
+	i := 0
+	fmt.Println("Reading from LSMTree for key:", key)
+	fmt.Println("Levels size:", len(lt.Levels))
+	for i < len(lt.Levels) {
+		fmt.Println("Checking level:", i, "with size:", lt.LevelsSize[i])
+		if lt.LevelsSize[i] > 0 {
+			level := lt.Levels[i]
+			for j := 0; j < lt.LevelsSize[i]; j++ {
+				filePath := *(*level)[j]
+				// Read the data from the file
+				entry, found := ReadSStabel(filePath, key, bm, dictenery)
+				if found {
+					return entry, true
+				}
+			}
+		}
+		i++
+	}
+	return nil, false // Key not found in any SSTable
 }

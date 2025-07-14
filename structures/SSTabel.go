@@ -5,6 +5,7 @@ import (
 	utils "KVengine/utils"
 	"encoding/binary"
 	"fmt"
+	"os"
 )
 
 const (
@@ -35,207 +36,239 @@ func NewSSTable[T any, H any](podaci *utils.Iterator[T, H, *Entry], NumberOfEnye
 
 func (s *SSTable[T, H]) GenerateSSTabel(StartPath string, compresion bool) string {
 	if compresion {
-		data := AddItems(s.globalDictionary, s.Podaci)
-		if s.oneFile {
-			fmt.Println("Generating single file SSTable...")
-			file := NewBlockManagerWrap(StartPath, s.BlockManager)
-			file.WriteToFile([]byte{1}) // Write 1 to indicate it is compressed
-			file.WriteToFile([]byte{1}) // Write 1 to indicate single file format
-			//Write 5 Uint64 values for the offsets
-			file.WriteToFile(utils.Uint64ToBytes(uint64(s.numberOfEnterys))) // Number of entries
-			file.WriteToFile(utils.Uint64ToBytes(uint64(0)))                 // Offset for Data
-			file.WriteToFile(utils.Uint64ToBytes(uint64(0)))                 // Offset for Blom filter
-			file.WriteToFile(utils.Uint64ToBytes(uint64(0)))                 // Offset for IndexSummery
-			file.WriteToFile(utils.Uint64ToBytes(uint64(0)))                 // Offset for Index blocks
-			file.WriteToFile(utils.Uint64ToBytes(uint64(0)))                 // Offset for Merkle tree
-			file.WriteToFile(utils.Uint64ToBytes(uint64(0)))                 // Offset for Merkle tree
-			IndexSummery := make([]byte, 0)
-			IndexBloc := make([]byte, 0)
-			size := WriteDataBlockCompresed(file, data, &IndexSummery, &IndexBloc, s.Filter, s.SumeeryIndex)
-			// Write the Bloom filter
-			bloomFilterData := s.Filter.SerializeBloomF()
-			file.WriteToFile(bloomFilterData)
-			bloomFilterOffset := uint64(len(bloomFilterData))
-			// Write the Index summary
-			file.WriteToFile(IndexSummery)
-			indexSummaryOffset := uint64(len(IndexSummery))
-			// Write the Index blocks
-			file.WriteToFile(IndexBloc)
-			indexBlockOffset := uint64(len(IndexBloc))
-			// Write the offsets to the file
-			//Write Merkel tree in this section
-
-			// Generating heeder with offsets
-			Heeder := make([]byte, 0)
-			offsetStart := uint64(58) // Starting offset for the header
-			Heeder = append(Heeder, utils.Uint64ToBytes(offsetStart)...)
-			Heeder = append(Heeder, utils.Uint64ToBytes(offsetStart+size)...)
-			Heeder = append(Heeder, utils.Uint64ToBytes(size+bloomFilterOffset+offsetStart)...)
-			Heeder = append(Heeder, utils.Uint64ToBytes(size+bloomFilterOffset+indexSummaryOffset+offsetStart)...)
-			Heeder = append(Heeder, utils.Uint64ToBytes(size+bloomFilterOffset+indexBlockOffset+indexSummaryOffset+offsetStart)...)
-			Heeder = append(Heeder, utils.Uint64ToBytes(size+bloomFilterOffset+indexBlockOffset+indexSummaryOffset+offsetStart)...) //Need Merkle tree offset
-			//file.FlushBuffer(false)
-			fmt.Println(Heeder) // Flush the buffer to write the data to the file
-			file.SetCurrentPosition(10)
-			file.OverwriteDataInFile(Heeder) // Overwrite the header with the offsets
-			file.FlushBuffer(false)          // Flush the buffer to write the header to the file
-			fmt.Println("SSTable generated successfully at", StartPath)
-			return StartPath
-		} else {
-			fmt.Println("Generating multiple files SSTable...")
-			// Handle multiple files case
-			// Implement logic to write data to multiple files
-			// For example, you can create a new file for each block of data
-			// and write the corresponding index and bloom filter information.
-			// This is a placeholder implementation.
-			file := NewBlockManagerWrap(StartPath+"TOC", s.BlockManager)
-
-			file.WriteToFile([]byte{1})                                      // Write 1 to say it is compressed
-			file.WriteToFile([]byte{0})                                      // Write 0 to indicate multiple files format
-			file.WriteToFile(utils.Uint64ToBytes(uint64(s.numberOfEnterys))) // Offset for Data
-			// Write paths to other files
-			data_path := StartPath + "dataSstable"
-			indexSummery_path := StartPath + "indexSummerySstable"
-			indexBlock_path := StartPath + "indexBlockSstable"
-			bloomFilter_path := StartPath + "bloomFilterSstable"
-			merkleTree_path := StartPath + "merkleTreeSstable"
-			Data := make([]byte, 0)
-			Data = binary.AppendUvarint(Data, uint64(len(data_path)))
-			Data = append(Data, []byte(data_path)...)
-			Data = binary.AppendUvarint(Data, uint64(len(bloomFilter_path)))
-			Data = append(Data, []byte(bloomFilter_path)...)
-			Data = binary.AppendUvarint(Data, uint64(len(indexSummery_path)))
-			Data = append(Data, []byte(indexSummery_path)...)
-			Data = binary.AppendUvarint(Data, uint64(len(indexBlock_path)))
-			Data = append(Data, []byte(indexBlock_path)...)
-			Data = binary.AppendUvarint(Data, uint64(len(merkleTree_path)))
-			Data = append(Data, []byte(merkleTree_path)...)
-			file.WriteToFile(Data) // Write the paths to the file
-			file.FlushBuffer(false)
-			fileData := NewBlockManagerWrap(data_path, s.BlockManager)
-			indexSummery := make([]byte, 0)
-			indexBlock := make([]byte, 0)
-			size := WriteDataBlockCompresed(fileData, data, &indexSummery, &indexBlock, s.Filter, s.SumeeryIndex)
-			fileData.FlushBuffer(false)
-			fmt.Println("Data block size:", size)
-			// Write the Bloom filter
-			bloomFilterData := s.Filter.SerializeBloomF()
-			fileBloom := NewBlockManagerWrap(bloomFilter_path, s.BlockManager)
-			fileBloom.WriteToFile(binary.AppendUvarint([]byte{}, uint64(len(bloomFilterData))))
-			fileBloom.WriteToFile(bloomFilterData)
-			fileBloom.FlushBuffer(false)
-			fileIndexSummery := NewBlockManagerWrap(indexSummery_path, s.BlockManager)
-			fileIndexSummery.WriteToFile(indexSummery)
-			fileIndexSummery.FlushBuffer(false)
-			fileIndexBlock := NewBlockManagerWrap(indexBlock_path, s.BlockManager)
-			fileIndexBlock.WriteToFile(indexBlock)
-			fileIndexBlock.FlushBuffer(false)
-			//Creating Merkle tree file need to be finished
-			return StartPath + "TOC"
-		}
+		data, firstKey, lastKey := AddItems(s.globalDictionary, s.Podaci)
+		fmt.Println("Generating files SSTable with compresion...")
+		return WriteToFilesCompresed(StartPath, s.oneFile, s.BlockManager, s.numberOfEnterys, s.Filter, s.SumeeryIndex, data, firstKey, lastKey)
 	} else {
-		//TODO WRITTE LOGIC HEAR
-		itterator := AddItemsWithNoCompresion(s.globalDictionary, s.Podaci)
-		fmt.Println("Generating  files SSTable withno compresion...")
-		if s.oneFile {
-			file := NewBlockManagerWrap(StartPath, s.BlockManager)
-			file.WriteToFile([]byte{0}) // Write 0 to indicate it is not compressed
-			file.WriteToFile([]byte{1}) // Write 1 to indicate single file format
-			//Write 5 Uint64 values for the offsets
-			file.WriteToFile(utils.Uint64ToBytes(uint64(s.numberOfEnterys))) // Number of entries
-			file.WriteToFile(utils.Uint64ToBytes(uint64(0)))                 // Offset for Data
-			file.WriteToFile(utils.Uint64ToBytes(uint64(0)))                 // Offset for Blom filter
-			file.WriteToFile(utils.Uint64ToBytes(uint64(0)))                 // Offset for IndexSummery
-			file.WriteToFile(utils.Uint64ToBytes(uint64(0)))                 // Offset for Index blocks
-			file.WriteToFile(utils.Uint64ToBytes(uint64(0)))                 // Offset for Merkle tree
-			file.WriteToFile(utils.Uint64ToBytes(uint64(0)))                 // Offset for Merkle tree
-			IndexSummery := make([]byte, 0)
-			IndexBloc := make([]byte, 0)
-			size := WriteDataBlock(file, itterator, &IndexSummery, &IndexBloc, s.Filter, s.SumeeryIndex, s.globalDictionary)
-			// Write the Bloom filter
-			bloomFilterData := s.Filter.SerializeBloomF()
-			file.WriteToFile(bloomFilterData)
-			bloomFilterOffset := uint64(len(bloomFilterData))
-			// Write the Index summary
-			file.WriteToFile(IndexSummery)
-			indexSummaryOffset := uint64(len(IndexSummery))
-			// Write the Index blocks
-			file.WriteToFile(IndexBloc)
-			indexBlockOffset := uint64(len(IndexBloc))
-			// Write the offsets to the file
-			//Write Merkel tree in this section
-			// Generating heeder with offsets
-			Heeder := make([]byte, 0)
-			offsetStart := uint64(58) // Starting offset for the header
-			Heeder = append(Heeder, utils.Uint64ToBytes(offsetStart)...)
-			Heeder = append(Heeder, utils.Uint64ToBytes(offsetStart+size)...)
-			Heeder = append(Heeder, utils.Uint64ToBytes(size+bloomFilterOffset+offsetStart)...)
-			Heeder = append(Heeder, utils.Uint64ToBytes(size+bloomFilterOffset+indexSummaryOffset+offsetStart)...)
-			Heeder = append(Heeder, utils.Uint64ToBytes(size+bloomFilterOffset+indexBlockOffset+indexSummaryOffset+offsetStart)...)
-			Heeder = append(Heeder, utils.Uint64ToBytes(size+bloomFilterOffset+indexBlockOffset+indexSummaryOffset+offsetStart)...) //Need Merkle tree offset
-			//file.FlushBuffer(false)
-			fmt.Println(Heeder) // Flush the buffer to write the data to the file
-			file.SetCurrentPosition(10)
-			file.OverwriteDataInFile(Heeder) // Overwrite the header with the offsets
-			file.FlushBuffer(false)
-			return StartPath // Flush the buffer to write the header to the file
-			// Flush the buffer to write the header to the file
-		} else {
-			fmt.Println("Generating multiple files SSTable...")
-			// Handle multiple files case
-			// Implement logic to write data to multiple files
-			// For example, you can create a new file for each block of data
-			// and write the corresponding index and bloom filter information.
-			// This is a placeholder implementation.
-			file := NewBlockManagerWrap(StartPath+"TOC", s.BlockManager)
-
-			file.WriteToFile([]byte{0}) // Write 0 to say it is not compressed
-			file.WriteToFile([]byte{0}) // Write 0 to indicate multiple files format
-			// Write paths to other files
-			file.WriteToFile(utils.Uint64ToBytes(uint64(s.numberOfEnterys))) // Offset for Data
-			data_path := StartPath + "dataSstable"
-			indexSummery_path := StartPath + "indexSummerySstable"
-			indexBlock_path := StartPath + "indexBlockSstable"
-			bloomFilter_path := StartPath + "bloomFilterSstable"
-			merkleTree_path := StartPath + "merkleTreeSstable"
-			Data := make([]byte, 0)
-			Data = binary.AppendUvarint(Data, uint64(len(data_path)))
-			Data = append(Data, []byte(data_path)...)
-			Data = binary.AppendUvarint(Data, uint64(len(bloomFilter_path)))
-			Data = append(Data, []byte(bloomFilter_path)...)
-			Data = binary.AppendUvarint(Data, uint64(len(indexSummery_path)))
-			Data = append(Data, []byte(indexSummery_path)...)
-			Data = binary.AppendUvarint(Data, uint64(len(indexBlock_path)))
-			Data = append(Data, []byte(indexBlock_path)...)
-			Data = binary.AppendUvarint(Data, uint64(len(merkleTree_path)))
-			Data = append(Data, []byte(merkleTree_path)...)
-			file.WriteToFile(Data) // Write the paths to the file
-			file.FlushBuffer(false)
-			fileData := NewBlockManagerWrap(data_path, s.BlockManager)
-			indexSummery := make([]byte, 0)
-			indexBlock := make([]byte, 0)
-			size := WriteDataBlock(fileData, itterator, &indexSummery, &indexBlock, s.Filter, s.SumeeryIndex, s.globalDictionary)
-			fileData.FlushBuffer(false)
-			fmt.Println("Data block size:", size)
-			// Write the Bloom filter
-			bloomFilterData := s.Filter.SerializeBloomF()
-			fileBloom := NewBlockManagerWrap(bloomFilter_path, s.BlockManager)
-			fileBloom.WriteToFile(binary.AppendUvarint([]byte{}, uint64(len(bloomFilterData))))
-			fileBloom.WriteToFile(bloomFilterData)
-			fileBloom.FlushBuffer(false)
-			fileIndexSummery := NewBlockManagerWrap(indexSummery_path, s.BlockManager)
-			fileIndexSummery.WriteToFile(indexSummery)
-			fileIndexSummery.FlushBuffer(false)
-			fileIndexBlock := NewBlockManagerWrap(indexBlock_path, s.BlockManager)
-			fileIndexBlock.WriteToFile(indexBlock)
-			fileIndexBlock.FlushBuffer(false)
-			//Creating Merkle tree file need to be finished
-			fmt.Println("SSTable generated successfully at", StartPath+"TOC")
-			return StartPath + "TOC"
-		}
+		fmt.Println("Generating files SSTable without compresion...")
+		data, firstKey, lastkey := AddItemsWithNoCompresion(s.globalDictionary, s.Podaci)
+		return WriteToFile(StartPath, s.oneFile, s.BlockManager, s.numberOfEnterys, s.Filter, s.SumeeryIndex, data, firstKey, lastkey)
 	}
 }
-func WriteDataBlock[T any, H any](file *BlockManagerWrap, itter *utils.Iterator[T, H, *Entry], IndexSummery *[]byte, IndexBloc *[]byte, Filter *BloomFilter, BlockSummery uint64, dicnery *GlobalDictionary) uint64 {
+func WriteToFilesCompresed[T any, H any](StartPath string, oneFile bool, BlockManager *BlockManager, numberOfEnterys int, Filter *BloomFilter, SumeeryIndex uint64, data *utils.Iterator[T, H, *ExportEntry], firstKey string, lastkey string) string {
+	if oneFile {
+		fmt.Println("Generating single file SSTable...")
+		file := NewBlockManagerWrap(StartPath, BlockManager)
+		file.WriteToFile([]byte{1}) // Write 1 to indicate it is compressed
+		file.WriteToFile([]byte{1}) // Write 1 to indicate single file format
+		//Write 5 Uint64 values for the offsets
+		file.WriteToFile(utils.Uint64ToBytes(uint64(numberOfEnterys))) // Number of entries
+		file.WriteToFile(utils.Uint64ToBytes(uint64(0)))               // Offset for Data
+		file.WriteToFile(utils.Uint64ToBytes(uint64(0)))               // Offset for Blom filter
+		file.WriteToFile(utils.Uint64ToBytes(uint64(0)))               // Offset for IndexSummery
+		file.WriteToFile(utils.Uint64ToBytes(uint64(0)))               // Offset for Index blocks
+		file.WriteToFile(utils.Uint64ToBytes(uint64(0)))               // Offset for Merkle tree
+		file.WriteToFile(utils.Uint64ToBytes(uint64(0)))               // Offset for Merkle tree
+		IndexSummery := make([]byte, 0)
+		IndexBloc := make([]byte, 0)
+		size, EntryNumbers := WriteDataBlockCompresed(file, data, &IndexSummery, &IndexBloc, Filter, SumeeryIndex)
+		// Write the Bloom filter
+		bloomFilterData := Filter.SerializeBloomF()
+		file.WriteToFile(bloomFilterData)
+		bloomFilterOffset := uint64(len(bloomFilterData))
+		// Write the Index summary
+		file.WriteToFile(IndexSummery)
+		indexSummaryOffset := uint64(len(IndexSummery))
+		// Write the Index blocks
+		file.WriteToFile(IndexBloc)
+		indexBlockOffset := uint64(len(IndexBloc))
+		// Write the offsets to the file
+		//Write Merkel tree in this section
+
+		// Generating heeder with offsets
+		Heeder := make([]byte, 0)
+		offsetStart := uint64(58) // Starting offset for the header
+		Heeder = append(Heeder, utils.Uint64ToBytes(EntryNumbers)...)
+		Heeder = append(Heeder, utils.Uint64ToBytes(offsetStart)...)
+		Heeder = append(Heeder, utils.Uint64ToBytes(offsetStart+size)...)
+		Heeder = append(Heeder, utils.Uint64ToBytes(size+bloomFilterOffset+offsetStart)...)
+		Heeder = append(Heeder, utils.Uint64ToBytes(size+bloomFilterOffset+indexSummaryOffset+offsetStart)...)
+		Heeder = append(Heeder, utils.Uint64ToBytes(size+bloomFilterOffset+indexBlockOffset+indexSummaryOffset+offsetStart)...)
+		Heeder = append(Heeder, utils.Uint64ToBytes(size+bloomFilterOffset+indexBlockOffset+indexSummaryOffset+offsetStart)...) //Need Merkle tree offset
+		//file.FlushBuffer(false)
+		fmt.Println(Heeder)
+		// Flush the buffer to write the data to the file
+		file.WriteToFile(utils.Uint64ToBytes(uint64(len(firstKey))))
+		file.WriteToFile([]byte(firstKey))
+		file.WriteToFile(utils.Uint64ToBytes(uint64(len(lastkey))))
+		file.WriteToFile([]byte(lastkey))
+		file.SetCurrentPosition(2)
+		file.OverwriteDataInFile(Heeder) // Overwrite the header with the offsets
+		file.FlushBuffer(false)          // Flush the buffer to write the header to the file
+		fmt.Println("SSTable generated successfully at", StartPath)
+		return StartPath
+	} else {
+		fmt.Println("Generating multiple files SSTable...")
+		// Handle multiple files case
+		// Implement logic to write data to multiple files
+		// For example, you can create a new file for each block of data
+		// and write the corresponding index and bloom filter information.
+		// This is a placeholder implementation.
+		file := NewBlockManagerWrap(StartPath+"TOC", BlockManager)
+
+		file.WriteToFile([]byte{1})                                    // Write 1 to say it is compressed
+		file.WriteToFile([]byte{0})                                    // Write 0 to indicate multiple files format
+		file.WriteToFile(utils.Uint64ToBytes(uint64(numberOfEnterys))) // Offset for Data
+		// Write paths to other files
+		data_path := StartPath + "dataSstable"
+		indexSummery_path := StartPath + "indexSummerySstable"
+		indexBlock_path := StartPath + "indexBlockSstable"
+		bloomFilter_path := StartPath + "bloomFilterSstable"
+		merkleTree_path := StartPath + "merkleTreeSstable"
+		Data := make([]byte, 0)
+		Data = binary.AppendUvarint(Data, uint64(len(data_path)))
+		Data = append(Data, []byte(data_path)...)
+		Data = binary.AppendUvarint(Data, uint64(len(bloomFilter_path)))
+		Data = append(Data, []byte(bloomFilter_path)...)
+		Data = binary.AppendUvarint(Data, uint64(len(indexSummery_path)))
+		Data = append(Data, []byte(indexSummery_path)...)
+		Data = binary.AppendUvarint(Data, uint64(len(indexBlock_path)))
+		Data = append(Data, []byte(indexBlock_path)...)
+		Data = binary.AppendUvarint(Data, uint64(len(merkleTree_path)))
+		Data = append(Data, []byte(merkleTree_path)...)
+		Data = append(Data, utils.Uint64ToBytes(uint64(len(firstKey)))...)
+		Data = append(Data, []byte(firstKey)...)
+		Data = append(Data, utils.Uint64ToBytes(uint64(len(lastkey)))...)
+		Data = append(Data, []byte(lastkey)...)
+		file.WriteToFile(Data) // Write the paths to the file
+		file.FlushBuffer(false)
+		fileData := NewBlockManagerWrap(data_path, BlockManager)
+		indexSummery := make([]byte, 0)
+		indexBlock := make([]byte, 0)
+		size, EntryNumbers := WriteDataBlockCompresed(fileData, data, &indexSummery, &indexBlock, Filter, SumeeryIndex)
+		fileData.FlushBuffer(false)
+		file.SetCurrentPosition(2)
+		file.OverwriteDataInFile(utils.Uint64ToBytes(uint64(EntryNumbers)))
+		// Overwrite the number of entries in the header
+		fmt.Println("Data block size:", size)
+		// Write the Bloom filter
+		bloomFilterData := Filter.SerializeBloomF()
+		fileBloom := NewBlockManagerWrap(bloomFilter_path, BlockManager)
+		fileBloom.WriteToFile(binary.AppendUvarint([]byte{}, uint64(len(bloomFilterData))))
+		fileBloom.WriteToFile(bloomFilterData)
+		fileBloom.FlushBuffer(false)
+		fileIndexSummery := NewBlockManagerWrap(indexSummery_path, BlockManager)
+		fileIndexSummery.WriteToFile(indexSummery)
+		fileIndexSummery.FlushBuffer(false)
+		fileIndexBlock := NewBlockManagerWrap(indexBlock_path, BlockManager)
+		fileIndexBlock.WriteToFile(indexBlock)
+		fileIndexBlock.FlushBuffer(false)
+		//Creating Merkle tree file need to be finished
+		return StartPath + "TOC"
+	}
+}
+func WriteToFile[T any, H any](StartPath string, oneFile bool, BlockManager *BlockManager, numberOfEnterys int,
+	Filter *BloomFilter, SumeeryIndex uint64, data *utils.Iterator[T, H, *Entry], firstKey string, lastkey string) string {
+	if oneFile {
+		file := NewBlockManagerWrap(StartPath, BlockManager)
+		file.WriteToFile([]byte{0}) // Write 0 to indicate it is not compressed
+		file.WriteToFile([]byte{1}) // Write 1 to indicate single file format
+		//Write 5 Uint64 values for the offsets
+		file.WriteToFile(utils.Uint64ToBytes(uint64(numberOfEnterys))) // Number of entries
+		file.WriteToFile(utils.Uint64ToBytes(uint64(0)))               // Offset for Data
+		file.WriteToFile(utils.Uint64ToBytes(uint64(0)))               // Offset for Blom filter
+		file.WriteToFile(utils.Uint64ToBytes(uint64(0)))               // Offset for IndexSummery
+		file.WriteToFile(utils.Uint64ToBytes(uint64(0)))               // Offset for Index blocks
+		file.WriteToFile(utils.Uint64ToBytes(uint64(0)))               // Offset for Merkle tree
+		file.WriteToFile(utils.Uint64ToBytes(uint64(0)))               // Offset for Merkle tree
+		IndexSummery := make([]byte, 0)
+		IndexBloc := make([]byte, 0)
+		size, EntryNumbers := WriteDataBlock(file, data, &IndexSummery, &IndexBloc, Filter, SumeeryIndex)
+		// Write the Bloom filter
+		bloomFilterData := Filter.SerializeBloomF()
+		file.WriteToFile(bloomFilterData)
+		bloomFilterOffset := uint64(len(bloomFilterData))
+		// Write the Index summary
+		file.WriteToFile(IndexSummery)
+		indexSummaryOffset := uint64(len(IndexSummery))
+		// Write the Index blocks
+		file.WriteToFile(IndexBloc)
+		indexBlockOffset := uint64(len(IndexBloc))
+		// Write the offsets to the file
+		//Write Merkel tree in this section
+		// Generating heeder with offsets
+		Heeder := make([]byte, 0)
+		offsetStart := uint64(58) // Starting offset for the header
+		Heeder = append(Heeder, utils.Uint64ToBytes(EntryNumbers)...)
+		Heeder = append(Heeder, utils.Uint64ToBytes(offsetStart)...)
+		Heeder = append(Heeder, utils.Uint64ToBytes(offsetStart+size)...)
+		Heeder = append(Heeder, utils.Uint64ToBytes(size+bloomFilterOffset+offsetStart)...)
+		Heeder = append(Heeder, utils.Uint64ToBytes(size+bloomFilterOffset+indexSummaryOffset+offsetStart)...)
+		Heeder = append(Heeder, utils.Uint64ToBytes(size+bloomFilterOffset+indexBlockOffset+indexSummaryOffset+offsetStart)...)
+		Heeder = append(Heeder, utils.Uint64ToBytes(size+bloomFilterOffset+indexBlockOffset+indexSummaryOffset+offsetStart)...) //Need Merkle tree offset
+		//file.FlushBuffer(false)
+		fmt.Println(Heeder) // Flush the buffer to write the data to the file
+		file.WriteToFile(utils.Uint64ToBytes(uint64(len(firstKey))))
+		file.WriteToFile([]byte(firstKey))
+		file.WriteToFile(utils.Uint64ToBytes(uint64(len(lastkey))))
+		file.WriteToFile([]byte(lastkey))
+		file.SetCurrentPosition(2)
+		file.OverwriteDataInFile(Heeder) // Overwrite the header with the offsets
+		file.FlushBuffer(false)
+		return StartPath // Flush the buffer to write the header to the file
+		// Flush the buffer to write the header to the file
+	} else {
+		fmt.Println("Generating multiple files SSTable...")
+		// Handle multiple files case
+		// Implement logic to write data to multiple files
+		// For example, you can create a new file for each block of data
+		// and write the corresponding index and bloom filter information.
+		// This is a placeholder implementation.
+		file := NewBlockManagerWrap(StartPath+"TOC", BlockManager)
+
+		file.WriteToFile([]byte{0}) // Write 0 to say it is not compressed
+		file.WriteToFile([]byte{0}) // Write 0 to indicate multiple files format
+		// Write paths to other files
+		file.WriteToFile(utils.Uint64ToBytes(uint64(numberOfEnterys))) // Offset for Data
+		data_path := StartPath + "dataSstable"
+		indexSummery_path := StartPath + "indexSummerySstable"
+		indexBlock_path := StartPath + "indexBlockSstable"
+		bloomFilter_path := StartPath + "bloomFilterSstable"
+		merkleTree_path := StartPath + "merkleTreeSstable"
+		Data := make([]byte, 0)
+		Data = binary.AppendUvarint(Data, uint64(len(data_path)))
+		Data = append(Data, []byte(data_path)...)
+		Data = binary.AppendUvarint(Data, uint64(len(bloomFilter_path)))
+		Data = append(Data, []byte(bloomFilter_path)...)
+		Data = binary.AppendUvarint(Data, uint64(len(indexSummery_path)))
+		Data = append(Data, []byte(indexSummery_path)...)
+		Data = binary.AppendUvarint(Data, uint64(len(indexBlock_path)))
+		Data = append(Data, []byte(indexBlock_path)...)
+		Data = binary.AppendUvarint(Data, uint64(len(merkleTree_path)))
+		Data = append(Data, []byte(merkleTree_path)...)
+		Data = append(Data, utils.Uint64ToBytes(uint64(len(firstKey)))...)
+		Data = append(Data, []byte(firstKey)...)
+		Data = append(Data, utils.Uint64ToBytes(uint64(len(lastkey)))...)
+		Data = append(Data, []byte(lastkey)...)
+		file.WriteToFile(Data) // Write the paths to the file
+		file.FlushBuffer(false)
+		fileData := NewBlockManagerWrap(data_path, BlockManager)
+		indexSummery := make([]byte, 0)
+		indexBlock := make([]byte, 0)
+		size, EntryEnters := WriteDataBlock(fileData, data, &indexSummery, &indexBlock, Filter, SumeeryIndex)
+		file.SetCurrentPosition(2)
+		file.OverwriteDataInFile(utils.Uint64ToBytes(uint64(EntryEnters))) // Overwrite the number of entries in the header
+		fileData.FlushBuffer(false)
+		fmt.Println("Data block size:", size)
+		// Write the Bloom filter
+		bloomFilterData := Filter.SerializeBloomF()
+		fileBloom := NewBlockManagerWrap(bloomFilter_path, BlockManager)
+		fileBloom.WriteToFile(binary.AppendUvarint([]byte{}, uint64(len(bloomFilterData))))
+		fileBloom.WriteToFile(bloomFilterData)
+		fileBloom.FlushBuffer(false)
+		fileIndexSummery := NewBlockManagerWrap(indexSummery_path, BlockManager)
+		fileIndexSummery.WriteToFile(indexSummery)
+		fileIndexSummery.FlushBuffer(false)
+		fileIndexBlock := NewBlockManagerWrap(indexBlock_path, BlockManager)
+		fileIndexBlock.WriteToFile(indexBlock)
+		fileIndexBlock.FlushBuffer(false)
+		//Creating Merkle tree file need to be finished
+		fmt.Println("SSTable generated successfully at", StartPath+"TOC")
+		return StartPath + "TOC"
+	}
+}
+
+func WriteDataBlock[T any, H any](file *BlockManagerWrap, itter *utils.Iterator[T, H, *Entry], IndexSummery *[]byte, IndexBloc *[]byte, Filter *BloomFilter, BlockSummery uint64) (uint64, uint64) {
 	// TODO: Implement the function logic here
 	entry, ok := itter.Next()
 	indexoffset := uint64(0)
@@ -244,12 +277,13 @@ func WriteDataBlock[T any, H any](file *BlockManagerWrap, itter *utils.Iterator[
 	firstIndexindexSummery := "NoKey"
 	lastKey := firtKEyEver
 	offset := uint64(0)
+	i := uint64(0)
 	if !ok {
 		fmt.Println("No entries to write.")
-		return 0 // No entries to write
+		return 0, 0 // No entries to write
 	}
 	for true {
-
+		i += 1
 		if entry == nil {
 			continue
 		}
@@ -316,11 +350,11 @@ func WriteDataBlock[T any, H any](file *BlockManagerWrap, itter *utils.Iterator[
 	lastKeyEncoded = binary.AppendUvarint(lastKeyEncoded, uint64(len(lastKey)))
 	lastKeyEncoded = append(lastKeyEncoded, []byte(lastKey)...)
 	*IndexSummery = append(lastKeyEncoded, *IndexSummery...)
-	return offset
+	return offset, i
 	// Return a default value to avoid missing return error
 }
 
-func WriteDataBlockCompresed[T any, H any](file *BlockManagerWrap, itter *utils.Iterator[T, H, *ExportEntry], IndexSummery *[]byte, IndexBloc *[]byte, Filter *BloomFilter, BlockSummery uint64) uint64 {
+func WriteDataBlockCompresed[T any, H any](file *BlockManagerWrap, itter *utils.Iterator[T, H, *ExportEntry], IndexSummery *[]byte, IndexBloc *[]byte, Filter *BloomFilter, BlockSummery uint64) (uint64, uint64) {
 	entry, ok := itter.Next()
 	indexoffset := uint64(0)
 	indexTogo := 0
@@ -328,12 +362,13 @@ func WriteDataBlockCompresed[T any, H any](file *BlockManagerWrap, itter *utils.
 	firstIndexindexSummery := uint64(0)
 	lastKey := firtKEyEver
 	offset := uint64(0)
+	i := uint64(0)
 	if !ok {
 		fmt.Println("No entries to write.")
-		return 0 // No entries to write
+		return 0, 0 // No entries to write
 	}
 	for true {
-
+		i += 1
 		if entry == nil {
 			continue
 		}
@@ -390,10 +425,10 @@ func WriteDataBlockCompresed[T any, H any](file *BlockManagerWrap, itter *utils.
 	lastKeyEncoded := make([]byte, 0)
 	lastKeyEncoded = binary.AppendUvarint(lastKeyEncoded, uint64(lastKey))
 	*IndexSummery = append(lastKeyEncoded, *IndexSummery...)
-	return offset
+	return offset, i
 }
 
-func ReadSStabel(pathtoToc string, key string, BlockManager *BlockManager, globalDictionary *GlobalDictionary) {
+func ReadSStabel(pathtoToc string, key string, BlockManager *BlockManager, globalDictionary *GlobalDictionary) (*Entry, bool) {
 	file := NewBlockManagerWrap(pathtoToc, BlockManager)
 	_, Compresion := file.ReadFromCurrentPosition(1)
 	_, oneFile := file.ReadFromCurrentPosition(1)
@@ -402,7 +437,7 @@ func ReadSStabel(pathtoToc string, key string, BlockManager *BlockManager, globa
 		keyEntry, _ := globalDictionary.SkipList.Get(key)
 		if keyEntry.GetKey() == "" {
 			fmt.Println("Key not found in the global dictionary.")
-			return
+			return &Entry{}, false
 		}
 		keyUint64 := utils.BytesToUint64(keyEntry.GetValue())
 		if oneFile[0] == 1 {
@@ -434,21 +469,21 @@ func ReadSStabel(pathtoToc string, key string, BlockManager *BlockManager, globa
 			Filter := DeserializeBloomF(data)
 			if !Filter.Check(utils.Uint64ToBytes(keyUint64)) {
 				fmt.Println("Key not found in the Bloom filter.")
-				return
+				return &Entry{}, false
 			}
 
 			file.SetCurrentPosition(int(indexSummeryOffset))
 			offset, found := ReadIndexSummeryComprested(file, keyUint64)
 			if !found {
 				fmt.Println("Key not found in the index summary.")
-				return
+				return &Entry{}, false
 			}
 			fmt.Println("Key found in the index summary at offset:", offset)
 			file.SetCurrentPosition(int(indexBlockOffset + offset))
 			offset, found = ReadIndexBlockComprested(file, keyUint64)
 			if !found {
 				fmt.Println("Key not found in the index block.")
-				return
+				return &Entry{}, false
 			}
 			file.SetCurrentPosition(int(dataOffset + offset))
 			fmt.Println("Reading data block at offset:", dataOffset+offset)
@@ -456,7 +491,12 @@ func ReadSStabel(pathtoToc string, key string, BlockManager *BlockManager, globa
 			data = entry.value
 			fmt.Println("Data read from the SSTable:", data)
 			fmt.Println("Key found in the index block at offset:", offset)
-			file.SetCurrentPosition(int(dataOffset + offset))
+			return &Entry{
+				key:     key,
+				value:   data,
+				deleted: entry.tombstone,
+				time:    entry.time,
+			}, true
 		} else {
 			fmt.Println("Reading compressed SSTable from multiple files...")
 			// Read the paths from the TOC file
@@ -499,7 +539,7 @@ func ReadSStabel(pathtoToc string, key string, BlockManager *BlockManager, globa
 			bloomFilter := DeserializeBloomF(bloomFilterData)
 			if !bloomFilter.Check(utils.Uint64ToBytes(keyUint64)) {
 				fmt.Println("Key not found in the Bloom filter.")
-				return
+				return &Entry{}, false
 			}
 			// Read the index summary from the specified path
 			indexSummeryFile := NewBlockManagerWrap(indexSummeryPathString, BlockManager)
@@ -507,7 +547,7 @@ func ReadSStabel(pathtoToc string, key string, BlockManager *BlockManager, globa
 			offset, found := ReadIndexSummeryComprested(indexSummeryFile, keyUint64)
 			if !found {
 				fmt.Println("Key not found in the index summary.")
-				return
+				return &Entry{}, false
 			}
 			fmt.Println("Key found in the index summary at offset:", offset)
 			// Read the index block from the specified path
@@ -516,7 +556,7 @@ func ReadSStabel(pathtoToc string, key string, BlockManager *BlockManager, globa
 			offset, found = ReadIndexBlockComprested(indexBlockFile, keyUint64)
 			if !found {
 				fmt.Println("Key not found in the index block.")
-				return
+				return &Entry{}, false
 			}
 			fmt.Println("Key found in the index block at offset:", offset)
 			// Read the data block from the specified path
@@ -525,15 +565,14 @@ func ReadSStabel(pathtoToc string, key string, BlockManager *BlockManager, globa
 			fmt.Println("Reading data block at offset:", offset)
 			entry := ReadDataCompressed(dataFile)
 			data := entry.value
-			if len(data) == 0 {
-				fmt.Println("No data found for the key.")
-				return
-			}
-			fmt.Println("Data read from the SSTable:", data)
+			return &Entry{
+				key:     key,
+				value:   data,
+				deleted: entry.tombstone,
+				time:    entry.time,
+			}, true
 
 		}
-
-		fmt.Println("Reading compressed SSTable...")
 	} else {
 		fmt.Println("Reading uncompressed SSTable...")
 		if oneFile[0] == 1 {
@@ -566,26 +605,26 @@ func ReadSStabel(pathtoToc string, key string, BlockManager *BlockManager, globa
 			fmt.Println("Bloom filter deserialized successfully.", Filter.Check([]byte(key)))
 			if !Filter.Check([]byte(key)) {
 				fmt.Println("Key not found in the Bloom filter.")
-				return
+				return &Entry{}, false
 			}
 			file.SetCurrentPosition(int(indexSummeryOffset))
 			offset, found := ReadIndexSummery(file, key)
 			if !found {
 				fmt.Println("Key not found in the index summary.")
-				return
+				return &Entry{}, false
 			}
 			fmt.Println("Key found in the index summary at offset:", offset)
 			file.SetCurrentPosition(int(indexBlockOffset + offset))
 			offset, found = ReadIndexBlock(file, key)
 			if !found {
 				fmt.Println("Key not found in the index block.")
-				return
+				return &Entry{}, false
 			}
 			fmt.Println("Key found in the index block at offset:", offset)
 			file.SetCurrentPosition(int(dataOffset + offset))
 			fmt.Println("Reading data block at offset:", dataOffset+offset)
 			entry := ReadData(file)
-			fmt.Println("Data read from the SSTable:", entry)
+			return entry, true
 		} else {
 			fmt.Println("Reading compressed SSTable from multiple files...")
 			// Read the paths from the TOC file
@@ -629,7 +668,7 @@ func ReadSStabel(pathtoToc string, key string, BlockManager *BlockManager, globa
 			fmt.Println("Bloom filter deserialized successfully.", Filter.Check([]byte(key)))
 			if !Filter.Check([]byte(key)) {
 				fmt.Println("Key not found in the Bloom filter.")
-				return
+				return &Entry{}, false
 			}
 			// Read the index summary from the specified path
 			indexSummeryFile := NewBlockManagerWrap(indexSummeryPathString, BlockManager)
@@ -637,7 +676,7 @@ func ReadSStabel(pathtoToc string, key string, BlockManager *BlockManager, globa
 			offset, found := ReadIndexSummery(indexSummeryFile, key)
 			if !found {
 				fmt.Println("Key not found in the index summary.")
-				return
+				return &Entry{}, false
 			}
 			fmt.Println("Key found in the index summary at offset:", offset)
 			// Read the index block from the specified path
@@ -646,7 +685,7 @@ func ReadSStabel(pathtoToc string, key string, BlockManager *BlockManager, globa
 			offset, found = ReadIndexBlock(indexBlockFile, key)
 			if !found {
 				fmt.Println("Key not found in the index block.")
-				return
+				return &Entry{}, false
 			}
 			fmt.Println("Key found in the index block at offset:", offset)
 			// Read the data block from the specified path
@@ -655,7 +694,7 @@ func ReadSStabel(pathtoToc string, key string, BlockManager *BlockManager, globa
 			fmt.Println("Reading data block at offset:", offset)
 			data := ReadData(dataFile)
 			fmt.Println("Data read from the SSTable:", data)
-
+			return data, true
 		}
 	}
 }
@@ -965,4 +1004,98 @@ func GetListInex(file *BlockManagerWrap, MaxEntrys uint64) *auxiliary.ListWithIt
 		i++
 	}
 	return list
+}
+func RemoveSStabel(path string, bm *BlockManager) {
+	file := NewBlockManagerWrap(path, bm)
+	// Check if the file exists
+	file.SetCurrentPosition(1)
+	_, oneFile := file.ReadFromCurrentPosition(1)
+	if oneFile[0] == 1 {
+		fmt.Println("Removing oneFile SSTable file:", path)
+		// Remove the file from the block manager
+		fmt.Println("Why this do not workkkkk")
+		file.FlushBuffer(false)
+		os.Remove(path)
+		// Remove the file from the filesystem
+	} else {
+		fmt.Println("Removing more SSTable file:", path)
+		file.SetCurrentPosition(10)
+		m, dataPathBytes := file.ReadFromCurrentPosition(uvarMaxSize)
+		dataPathLength, n := binary.Uvarint(dataPathBytes)
+		file.MoveFromCurrentPosition(int(n) - int(m))
+		m, dataPath := file.ReadFromCurrentPosition(int(dataPathLength))
+		dataPathString := string(dataPath[:dataPathLength])
+		os.Remove(dataPathString) // Remove the data file from the filesystem
+		m, bloomFilterPathBytes := file.ReadFromCurrentPosition(uvarMaxSize)
+		bloomFilterPathLength, n := binary.Uvarint(bloomFilterPathBytes)
+		file.MoveFromCurrentPosition(int(n) - int(m))
+		m, bloomFilterPath := file.ReadFromCurrentPosition(int(bloomFilterPathLength))
+		bloomFilterPathString := string(bloomFilterPath[:bloomFilterPathLength])
+		os.Remove(bloomFilterPathString) // Remove the bloom filter file from the filesystem
+		m, indexSummeryPathBytes := file.ReadFromCurrentPosition(uvarMaxSize)
+		indexSummeryPathLength, n := binary.Uvarint(indexSummeryPathBytes)
+		file.MoveFromCurrentPosition(int(n) - int(m))
+		m, indexSummeryPath := file.ReadFromCurrentPosition(int(indexSummeryPathLength))
+		indexSummeryPathString := string(indexSummeryPath[:indexSummeryPathLength])
+		os.Remove(indexSummeryPathString) // Remove the index summary file from the filesystem
+		m, indexBlockPathBytes := file.ReadFromCurrentPosition(uvarMaxSize)
+		indexBlockPathLength, n := binary.Uvarint(indexBlockPathBytes)
+		file.MoveFromCurrentPosition(int(n) - int(m))
+		m, indexBlockPath := file.ReadFromCurrentPosition(int(indexBlockPathLength))
+		indexBlockPathString := string(indexBlockPath[:indexBlockPathLength])
+		os.Remove(indexBlockPathString) // Remove the index block file from the filesystem
+		os.Remove(path)                 // Remove the main SSTable file from the filesystem
+	}
+
+}
+func GetFirstAndLAstKeyCompresed(path string, bm *BlockManager) (string, string) {
+	file := NewBlockManagerWrap(path, bm)
+	var file2 *BlockManagerWrap
+	// Check if the file exists
+	file.SetCurrentPosition(1) // Move to the second byte to check for compression
+	_, oneFile := file.ReadFromCurrentPosition(1)
+	file.MoveFromCurrentPosition(uvarMaxSize) // Skip the number of entries
+	if oneFile[0] == 1 {
+		file.SetCurrentPosition(50)
+		_, merkleTreeOffset := file.ReadFromCurrentPosition(8)
+		fmt.Println(merkleTreeOffset)
+		file.SetCurrentPosition(int(utils.BytesToUint64(merkleTreeOffset)))
+		file2 = file // Use the same file for reading first and last keys
+		// Data starts from header at position 58
+	} else {
+		file.SetCurrentPosition(10)
+		m, dataPathBytes := file.ReadFromCurrentPosition(uvarMaxSize)
+		dataPathLength, n := binary.Uvarint(dataPathBytes)
+		file.MoveFromCurrentPosition(int(n) - int(m))
+		m, _ = file.ReadFromCurrentPosition(int(dataPathLength))
+		m, bloomFilterPathBytes := file.ReadFromCurrentPosition(uvarMaxSize)
+		bloomFilterPathLength, n := binary.Uvarint(bloomFilterPathBytes)
+		file.MoveFromCurrentPosition(int(n) - int(m))
+		m, _ = file.ReadFromCurrentPosition(int(bloomFilterPathLength))
+		m, indexSummeryPathBytes := file.ReadFromCurrentPosition(uvarMaxSize)
+		indexSummeryPathLength, n := binary.Uvarint(indexSummeryPathBytes)
+		file.MoveFromCurrentPosition(int(n) - int(m))
+		m, _ = file.ReadFromCurrentPosition(int(indexSummeryPathLength))
+		m, indexBlockPathBytes := file.ReadFromCurrentPosition(uvarMaxSize)
+		indexBlockPathLength, n := binary.Uvarint(indexBlockPathBytes)
+		file.MoveFromCurrentPosition(int(n) - int(m))
+		m, _ = file.ReadFromCurrentPosition(int(indexBlockPathLength))
+		m, merkleTreePathBytes := file.ReadFromCurrentPosition(uvarMaxSize)
+		merkleTreePathLength, n := binary.Uvarint(merkleTreePathBytes)
+		file.MoveFromCurrentPosition(int(n) - int(m))
+		m, _ = file.ReadFromCurrentPosition(int(merkleTreePathLength))
+		file2 = file // Use the same file for reading first and last keys
+
+	}
+	_, buffer := file2.ReadFromCurrentPosition(8)
+	firstKeySize := utils.BytesToUint64(buffer)
+	_, firstKeyBytes := file.ReadFromCurrentPosition(int(firstKeySize))
+	firstKey := string(firstKeyBytes)
+	// Move the file pointer to the next position
+	// Move the file pointer to the next position
+	_, buffer = file2.ReadFromCurrentPosition(8)
+	lastKeySize := utils.BytesToUint64(buffer)
+	_, lastKeyBytes := file.ReadFromCurrentPosition(int(lastKeySize))
+	lastKey := string(lastKeyBytes)
+	return firstKey, lastKey
 }
