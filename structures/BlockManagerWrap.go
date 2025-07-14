@@ -196,7 +196,8 @@ func (bmw *BlockManagerWrap) OverwriteDataInFile(data []byte) (int, error) {
 			bmw.currentPosition += len(data[:bmw.fileEnd-bmw.currentPosition])
 
 			var lastBlock []byte
-			lastBlock, err = bmw.blockManager.WriteBlock(bmw.filePath, bmw.currentPosition/BLOCK_SIZE, data[bmw.fileEnd-startPosition:])
+			addFileSize := false
+			lastBlock, addFileSize, err = bmw.blockManager.WriteBlock(bmw.filePath, bmw.currentPosition/BLOCK_SIZE, data[bmw.fileEnd-startPosition:])
 			if err != nil {
 				return len(data[:bmw.fileEnd-bmw.currentPosition]), err
 			}
@@ -205,6 +206,9 @@ func (bmw *BlockManagerWrap) OverwriteDataInFile(data []byte) (int, error) {
 			bmw.fileEnd += int((math.Ceil(float64(len(cutOfData)) / float64(BLOCK_SIZE))) * BLOCK_SIZE)
 			bmw.currentPosition += len(cutOfData)
 			if len(lastBlock) > 0 {
+				if addFileSize {
+					bmw.fileEnd += BLOCK_SIZE
+				}
 				bmw.writePosition = bmw.fileEnd - BLOCK_SIZE
 				bmw.writeBuffer = bmw.writeBuffer[:0]
 				bmw.writeBuffer = lastBlock
