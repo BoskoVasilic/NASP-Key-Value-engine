@@ -30,5 +30,12 @@ func main() {
 	fmt.Println("Merging completed.")
 	entery, _ := tree.ReadSStabels("key3", bm, dictenery)
 	fmt.Println("Entry for key3 after merging:", entery)
-
+	fmt.Println("_________________________________________________________________________________")
+	tree2 := structures.Deserialize("tree_data", bm)
+	fmt.Println("Deserialized tree:", tree2)
+	fmt.Println("_________________________________________________________________________________")
+	entry, _ := tree2.ReadSStabels("key3", bm, dictenery)
+	fmt.Println("Entry for key3 in deserialized tree:", entry)
+	dicnery2 := structures.GetDicteneryFormFile("test", bm)
+	dicnery2.SkipList.Print()
 }

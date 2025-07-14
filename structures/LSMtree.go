@@ -3,6 +3,7 @@ package structures
 import (
 	"KVengine/utils"
 	"fmt"
+	"os"
 	"time"
 )
 
@@ -367,25 +368,32 @@ func (lt *LSMTree) StartMerging(configMergeFunction int, dictenery *GlobalDictio
 					fmt.Println("Merged path:", path)
 					// After merging, we need to remove the merged files from the current level
 					lt.LevelsSize[i] -= (last - first + 1)
-					// Remove the merged files from the current level
 					level := lt.Levels[i]
-					fmt.Println("-------------------------------------------------------------------------")
-					fmt.Println("Removing files from level:", i, "from index", first, "to", last)
-					for j := first; j <= last; j++ {
-						fmt.Println("Removing file at index:", j, "from level", i, "file:", *(*level)[j])
-						RemoveSStabel(*(*level)[j], lt.BlockMenager)
-					}
-					fmt.Println("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
 					j := 0
+					levelForDelete := make([]*string, 0)
 					newLevel := make([]*string, 0)
 					for j < len(*level) {
 						if j < first || j > last {
 							newLevel = append(newLevel, (*level)[j])
+						} else {
+							levelForDelete = append(levelForDelete, (*level)[j])
 						}
 						j++
 					}
-					// Update the level with the new level without the merged files
 					lt.Levels[i] = &newLevel
+					// Remove the merged files from the current level
+					lt.Serialize("tree_data", lt.BlockMenager)
+					fmt.Println("-------------------------------------------------------------------------")
+					fmt.Println("Removing files from level:", i, "from index", first, "to", last)
+					j = 0
+					for j := 0; j < len(levelForDelete); j++ {
+						fmt.Println("Removing file at index:", j, "from level", i, "file:", levelForDelete[j])
+						RemoveSStabel(*levelForDelete[j], lt.BlockMenager)
+					}
+					fmt.Println("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+
+					// Update the level with the new level without the merged files
+
 					j = 0
 					levelSerch := *lt.Levels[i]
 					for j < len(levelSerch) {
@@ -404,31 +412,36 @@ func (lt *LSMTree) StartMerging(configMergeFunction int, dictenery *GlobalDictio
 					lt.LevelsSize[i] -= (last - first + 1)
 					// Remove the merged files from the current level
 					level := lt.Levels[i]
-					fmt.Println("-------------------------------------------------------------------------")
-					fmt.Println("Removing files from level:", i, "from index", first, "to", last)
-					for j := first; j <= last; j++ {
-						fmt.Println("Removing file at index:", j, "from level", i, "file:", *(*level)[j])
-						RemoveSStabel(*(*level)[j], lt.BlockMenager)
-					}
-					fmt.Println("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
 					j := 0
+					levelForDelete := make([]*string, 0)
 					newLevel := make([]*string, 0)
 					for j < len(*level) {
 						if j < first || j > last {
 							newLevel = append(newLevel, (*level)[j])
+						} else {
+							levelForDelete = append(levelForDelete, (*level)[j])
 						}
 						j++
 					}
 					// Update the level with the new level without the merged files
 					lt.Levels[i] = &newLevel
 					j = 0
+					fmt.Println("Data before serialization:", lt)
+					lt.Serialize("tree_data", lt.BlockMenager)
+					fmt.Println("-------------------------------------------------------------------------")
+					fmt.Println("Removing files from level:", i, "from index", first, "to", last)
+					for j := 0; j < len(levelForDelete); j++ {
+						fmt.Println("Removing file at index:", j, "from level", i, "file:", levelForDelete[j])
+						RemoveSStabel(*levelForDelete[j], lt.BlockMenager)
+					}
+					fmt.Println("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+
 					levelSerch := *lt.Levels[i]
 					for j < len(levelSerch) {
 						fmt.Println("Level at index", j, "has path", levelSerch[j])
 					}
 					fmt.Println("--____________________--")
 				}
-				fmt.Println("Other merge strategies not implemented yet")
 			}
 
 		}
@@ -515,4 +528,60 @@ func (lt *LSMTree) ReadSStabels(key string, bm *BlockManager, dictenery *GlobalD
 		i++
 	}
 	return nil, false // Key not found in any SSTable
+}
+func (lt *LSMTree) Serialize(path string, bm *BlockManager) {
+	// Return the levels of the LSM tree
+	fmt.Println("Serializing LSMTree to path:", path)
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		// If the file does  exist, remove it
+		err := os.Remove(path)
+		if err != nil {
+			fmt.Println("Error removing existing file:", err)
+			return
+		}
+	}
+	file := NewBlockManagerWrap(path, bm)
+	defer file.FlushBuffer(false)
+	file.WriteToFile(utils.Uint64ToBytes(uint64(lt.maxLevel)))
+	file.WriteToFile(utils.Uint64ToBytes(uint64(len(lt.Levels))))
+	for i := 0; i < len(lt.Levels); i++ {
+		level := lt.Levels[i]
+		file.WriteToFile(utils.Uint64ToBytes(uint64(lt.LevelsSize[i])))
+		fmt.Println("Serializing level", i, "with size", lt.LevelsSize[i])
+		for j := 0; j < lt.LevelsSize[i]; j++ {
+			path := *(*level)[j]
+			fmt.Println("Serializing path:", path)
+			file.WriteToFile(utils.Uint64ToBytes(uint64(len(path))))
+			file.WriteToFile([]byte(path))
+		}
+	}
+}
+func Deserialize(path string, bm *BlockManager) *LSMTree {
+	file := NewBlockManagerWrap(path, bm)
+	_, maxLevelBytes := file.ReadFromCurrentPosition(8)
+	maxLevel := utils.BytesToUint64(maxLevelBytes)
+	_, levelsCountBytes := file.ReadFromCurrentPosition(8)
+	levelsCount := utils.BytesToUint64(levelsCountBytes)
+	fmt.Println("levelsCount:", levelsCount, "maxLevel:", maxLevel)
+	tree := NewLSMTree(int(maxLevel), bm)
+	for i := 0; i < int(levelsCount); i++ {
+		_, sizeBytes := file.ReadFromCurrentPosition(8)
+		size := utils.BytesToUint64(sizeBytes)
+		levelPaths := make([]*string, 0)
+		fmt.Println("Deserializing level", i, "with size", int(size))
+
+		tree.LevelsSize[i] = int(size)
+		for j := 0; j < int(size); j++ {
+			_, pathLengthBytes := file.ReadFromCurrentPosition(8)
+			pathLength := utils.BytesToUint64(pathLengthBytes)
+			_, pathBytes := file.ReadFromCurrentPosition(int(pathLength))
+			pathString := string(pathBytes)
+			fmt.Println("Deserializing path of length", pathLength, ":")
+			fmt.Println("Deserialized path:", pathString, "with length", pathLength)
+			levelPaths = append(levelPaths, &pathString)
+		}
+		tree.Levels = append(tree.Levels, &levelPaths)
+		fmt.Println("Deserialized level", i, "with paths:", tree.Levels, "and size:", tree.LevelsSize[i])
+	}
+	return tree
 }
