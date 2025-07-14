@@ -1,7 +1,7 @@
 package structures
 
 import (
-	"crypto/md5"
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 
@@ -21,14 +21,14 @@ type MerkleTree struct {
 	Leaves []*MerkleNode
 }
 
-// NewMerkleTree returns an empty MerkleTree
+// NewMerkleTree returns an empty MerkleTree, like an empty constructor
 func NewMerkleTree() *MerkleTree {
 	return &MerkleTree{}
 }
 
 // Put adds a new leaf node with the hash of data
 func (m *MerkleTree) Put(data []byte) {
-	hash := md5.Sum(data)
+	hash := sha256.Sum256(data)
 	node := &MerkleNode{
 		Hash: hash[:],
 	}
@@ -48,7 +48,7 @@ func (m *MerkleTree) build() {
 		for i := 0; i < len(nodes); i += 2 {
 			if i+1 < len(nodes) {
 				combined := append(nodes[i].Hash, nodes[i+1].Hash...)
-				h := md5.Sum(combined)
+				h := sha256.Sum256(combined)
 				parent := &MerkleNode{
 					Hash:  h[:],
 					Left:  nodes[i],
@@ -73,17 +73,62 @@ func (m *MerkleTree) RootHash() string {
 	return hex.EncodeToString(m.Root.Hash)
 }
 
+// CompareTreesWithIndex compares two Merkle trees.
+// Returns (true, -1) if trees are equal.
+// Returns (false, index) where the first difference in leaves occurs.
+func CompareTreesWithIndex(a, b *MerkleTree) (bool, int) {
+	if a == nil || b == nil {
+		return false, -1
+	}
+
+	// Check number of leaves first
+	if len(a.Leaves) != len(b.Leaves) {
+		return false, -1
+	}
+
+	// Check leaf hashes one by one
+	for i := 0; i < len(a.Leaves); i++ {
+		if !equalHashes(a.Leaves[i].Hash, b.Leaves[i].Hash) {
+			return false, i // Mismatch at index i
+		}
+	}
+
+	// Rebuild and compare roots
+	a.build()
+	b.build()
+
+	if !equalHashes(a.Root.Hash, b.Root.Hash) {
+		return false, -1 // Same leaves but different tree structure
+	}
+
+	return true, -1
+}
+
+// Helper function to compare two byte slices
+func equalHashes(a, b []byte) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
 // Serialize returns the leaves hashes serialized
 func (m *MerkleTree) Serialize() []byte {
 	buf := make([]byte, 0)
 	leafCount := utils.Uint32ToBytes(uint32(len(m.Leaves)))
 	buf = append(buf, leafCount...)
 	for _, leaf := range m.Leaves {
-		buf = append(buf, leaf.Hash...)
+		buf = append(buf, leaf.Hash...) // each hash is 32 bytes now
 	}
 	return buf
 }
 
+// Deserialize creates a MerkleTree from serialized data
 func Deserialize(data []byte) *MerkleTree {
 	if len(data) < 4 {
 		return nil // not enough data for leaf count
@@ -91,15 +136,16 @@ func Deserialize(data []byte) *MerkleTree {
 	leafCount := utils.BytesToUint32(data[:4])
 	offset := 4
 
-	expectedLength := 4 + int(leafCount)*16 // 16 bytes per MD5 hash
+	const hashSize = 32
+	expectedLength := 4 + int(leafCount)*hashSize
 	if len(data) < expectedLength {
 		return nil // data too short
 	}
 
 	m := NewMerkleTree()
 	for i := uint32(0); i < leafCount; i++ {
-		hashBytes := data[offset : offset+16]
-		offset += 16
+		hashBytes := data[offset : offset+hashSize]
+		offset += hashSize
 		node := &MerkleNode{
 			Hash: append([]byte(nil), hashBytes...), // copy slice
 		}
@@ -109,7 +155,6 @@ func Deserialize(data []byte) *MerkleTree {
 	m.build()
 	return m
 }
-
 
 // GetIter returns an iterator over the leaf hashes
 func (m *MerkleTree) GetIter() *utils.Iterator[[]*MerkleNode, []byte] {
@@ -121,7 +166,7 @@ func (m *MerkleTree) GetIter() *utils.Iterator[[]*MerkleNode, []byte] {
 	})
 }
 
-// Print for debugging
+// Prints the tree for debugging
 func (m *MerkleTree) Print() {
 	fmt.Println("Merkle Tree:")
 	printMerkle(m.Root, 0)
@@ -137,16 +182,18 @@ func printMerkle(node *MerkleNode, level int) {
 }
 
 func indent(level int) string {
-    s := ""
-    for i := 0; i < level; i++ {
-        s += "  "
-    }
-    return s
+	s := ""
+	for i := 0; i < level; i++ {
+		s += "  "
+	}
+	return s
 }
 
-
+// Tests all MerkleTree operations
 func TestMerkle() {
-	m := NewMerkleTree()
+	m1 := NewMerkleTree()
+	m2 := NewMerkleTree()
+
 	data := [][]byte{
 		[]byte("alpha"),
 		[]byte("beta"),
@@ -155,13 +202,14 @@ func TestMerkle() {
 	}
 
 	for _, d := range data {
-		m.Put(d)
+		m1.Put(d)
+		m2.Put(d)
 	}
 
-	m.Print()
-	fmt.Println("RootHash:", m.RootHash())
+	m1.Print()
+	fmt.Println("RootHash 1:", m1.RootHash())
 
-	iter := m.GetIter()
+	iter := m1.GetIter()
 	fmt.Println("Iterating leaves:")
 	for {
 		val, ok := iter.Next()
@@ -171,6 +219,20 @@ func TestMerkle() {
 		fmt.Printf("Leaf hash: %x\n", val)
 	}
 
-	serialized := m.Serialize()
+	serialized := m1.Serialize()
 	fmt.Printf("Serialized leaves: %x\n", serialized)
+
+
+	same, index := CompareTreesWithIndex(m1, m2)
+	if same {
+		fmt.Println("Merkle trees are identical.")
+	} else {
+		if index == -1 {
+			fmt.Println("Trees differ in structure or size.")
+		} else {
+			fmt.Printf("Trees differ at leaf index %d\n", index)
+		}
+	}
+
 }
+
