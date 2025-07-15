@@ -2,7 +2,6 @@ package structures
 
 import (
 	"encoding/binary"
-	"fmt"
 	"math"
 )
 
@@ -73,7 +72,6 @@ func (bmw *BlockManagerWrap) WriteToFile(data []byte) (int, error) {
 	if len(bmw.writeBuffer) == 0 {
 		switch bmw.writePosition {
 		case -1:
-			fmt.Println("Creating new file with initial block")
 			bmw.writePosition = 0
 			bmw.fileEnd += 1
 			newBlock := make([]byte, BLOCK_SIZE)
@@ -103,20 +101,42 @@ func (bmw *BlockManagerWrap) WriteToFile(data []byte) (int, error) {
 		bmw.isBufferFlushed = false
 		bmw.currentPosition = bmw.writePosition
 	} else if len(data) < availableBlockSpace {
-		bmw.writeBuffer, bmw.currentBufferUsedSpace = bmw.blockManager.AddDataWithCorrectSizeToBlock(bmw.currentBufferUsedSpace, data, bmw.writeBuffer)
+		var newBlock []byte
+		allBlocksToWrite := make([]byte, 0)
+		bmw.writeBuffer, bmw.currentBufferUsedSpace, newBlock = bmw.blockManager.AddDataWithCorrectSizeToBlock(bmw.currentBufferUsedSpace, data, bmw.writeBuffer)
 		bmw.currentPosition = bmw.writePosition + bmw.currentBufferUsedSpace
+		bmw.isBufferFlushed = true
+		if len(newBlock) > 0 {
+			allBlocksToWrite = append(allBlocksToWrite, bmw.writeBuffer...)
+			allBlocksToWrite = append(allBlocksToWrite, newBlock...)
+			err := bmw.blockManager.WriteToDisk(bmw.filePath, bmw.writePosition/BLOCK_SIZE, allBlocksToWrite)
+			if err != nil {
+				return 0, err
+			}
+			bmw.fileEnd += BLOCK_SIZE
+			bmw.writePosition += BLOCK_SIZE
+			bmw.writeBuffer = bmw.writeBuffer[:0]
+			bmw.writeBuffer = newBlock
+			bmw.currentBufferUsedSpace = 0
+			bmw.isBufferFlushed = true
+			bmw.currentPosition = bmw.writePosition
+		}
 	} else if len(data) == availableBlockSpace {
 		var newBlock []byte
+		allBlocksToWrite := make([]byte, 0)
 		bmw.writeBuffer, newBlock = bmw.blockManager.AddDataWithEqualSizeToBlock(bmw.currentBufferUsedSpace, data, bmw.writeBuffer)
-		err := bmw.blockManager.WriteToDisk(bmw.filePath, bmw.writePosition/BLOCK_SIZE, bmw.writeBuffer)
+		allBlocksToWrite = append(allBlocksToWrite, bmw.writeBuffer...)
+		allBlocksToWrite = append(allBlocksToWrite, newBlock...)
+		err := bmw.blockManager.WriteToDisk(bmw.filePath, bmw.writePosition/BLOCK_SIZE, allBlocksToWrite)
 		if err != nil {
 			return 0, err
 		}
+		bmw.fileEnd += BLOCK_SIZE
 		bmw.writePosition += BLOCK_SIZE
 		bmw.writeBuffer = bmw.writeBuffer[:0]
 		bmw.writeBuffer = newBlock
 		bmw.currentBufferUsedSpace = 0
-		bmw.isBufferFlushed = false
+		bmw.isBufferFlushed = true
 		bmw.currentPosition = bmw.writePosition
 	}
 
@@ -142,7 +162,7 @@ func (bmw *BlockManagerWrap) FlushBuffer(isFromOverwrite bool) error {
 	}
 
 	if !bmw.isBufferFlushed {
-		if bmw.writePosition != 0 {
+		if bmw.writePosition != 0 && bmw.currentBufferUsedSpace > 0 {
 			bmw.fileEnd += BLOCK_SIZE
 		}
 		bmw.isBufferFlushed = true
@@ -176,7 +196,8 @@ func (bmw *BlockManagerWrap) OverwriteDataInFile(data []byte) (int, error) {
 			bmw.currentPosition += len(data[:bmw.fileEnd-bmw.currentPosition])
 
 			var lastBlock []byte
-			lastBlock, err = bmw.blockManager.WriteBlock(bmw.filePath, bmw.currentPosition/BLOCK_SIZE, data[bmw.fileEnd-startPosition:])
+			addFileSize := false
+			lastBlock, addFileSize, err = bmw.blockManager.WriteBlock(bmw.filePath, bmw.currentPosition/BLOCK_SIZE, data[bmw.fileEnd-startPosition:])
 			if err != nil {
 				return len(data[:bmw.fileEnd-bmw.currentPosition]), err
 			}
@@ -185,6 +206,9 @@ func (bmw *BlockManagerWrap) OverwriteDataInFile(data []byte) (int, error) {
 			bmw.fileEnd += int((math.Ceil(float64(len(cutOfData)) / float64(BLOCK_SIZE))) * BLOCK_SIZE)
 			bmw.currentPosition += len(cutOfData)
 			if len(lastBlock) > 0 {
+				if addFileSize {
+					bmw.fileEnd += BLOCK_SIZE
+				}
 				bmw.writePosition = bmw.fileEnd - BLOCK_SIZE
 				bmw.writeBuffer = bmw.writeBuffer[:0]
 				bmw.writeBuffer = lastBlock
