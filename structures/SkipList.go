@@ -183,3 +183,24 @@ func (s *SkipList) GetIter() *utils.Iterator[Node, *Node, *Entry] {
 		return data, true
 	})
 }
+func (s *SkipList) RangeScan(first, last string) *utils.Iterator[string, *Node, *Entry] {
+	_, path, _ := s.findPath(first)
+	currentNode := path[s.currentHeight]
+	if currentNode.data.key < first {
+		currentNode = currentNode.next
+	}
+	return utils.NewIterator(&last, &currentNode, func(obj *string, current **Node) (*Entry, bool) {
+		if *current == nil || (*current).data.key > *obj {
+			return nil, false
+		}
+		for (*current).data.deleted {
+			*current = (*current).next
+			if *current == nil || (*current).data.key > *obj {
+				return nil, false
+			}
+		}
+		data := (*current).data
+		*current = (*current).next
+		return data, true
+	})
+}

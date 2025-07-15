@@ -129,7 +129,7 @@ func (m *MerkleTree) Serialize() []byte {
 }
 
 // Deserialize creates a MerkleTree from serialized data
-func Deserialize(data []byte) *MerkleTree {
+func DeserializeMerkleTree(data []byte) *MerkleTree {
 	if len(data) < 4 {
 		return nil // not enough data for leaf count
 	}
@@ -157,6 +157,7 @@ func Deserialize(data []byte) *MerkleTree {
 }
 
 // GetIter returns an iterator over the leaf hashes
+/*
 func (m *MerkleTree) GetIter() *utils.Iterator[[]*MerkleNode, []byte] {
 	return utils.NewIterator(&m.Leaves, 0, func(obj *[]*MerkleNode, pos int) ([]byte, bool) {
 		if pos >= len(*obj) {
@@ -165,7 +166,7 @@ func (m *MerkleTree) GetIter() *utils.Iterator[[]*MerkleNode, []byte] {
 		return (*obj)[pos].Hash, true
 	})
 }
-
+*/
 // Prints the tree for debugging
 func (m *MerkleTree) Print() {
 	fmt.Println("Merkle Tree:")
@@ -190,6 +191,7 @@ func indent(level int) string {
 }
 
 // Tests all MerkleTree operations
+/*
 func TestMerkle() {
 	m1 := NewMerkleTree()
 	m2 := NewMerkleTree()
@@ -222,7 +224,6 @@ func TestMerkle() {
 	serialized := m1.Serialize()
 	fmt.Printf("Serialized leaves: %x\n", serialized)
 
-
 	same, index := CompareTreesWithIndex(m1, m2)
 	if same {
 		fmt.Println("Merkle trees are identical.")
@@ -233,6 +234,5 @@ func TestMerkle() {
 			fmt.Printf("Trees differ at leaf index %d\n", index)
 		}
 	}
-
 }
-
+*/

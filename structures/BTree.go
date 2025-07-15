@@ -200,7 +200,7 @@ func replaceChild(children []*BTreeNode, old, left, right *BTreeNode) []*BTreeNo
 }
 
 // ---------------- iterator ----------------
-
+/*
 func (b *BTree) GetIter() *utils.Iterator[[]*Entry, []byte] {
 	allEntries := collectEntries(b.Root)
 
@@ -216,7 +216,7 @@ func (b *BTree) GetIter() *utils.Iterator[[]*Entry, []byte] {
 		return e.toBytes(), true
 	})
 }
-
+*/
 func collectEntries(node *BTreeNode) []*Entry {
 	if node == nil {
 		return nil
@@ -265,7 +265,7 @@ func PrintTree(node *BTreeNode, level int) {
 }
 
 // ---------------- minimal test ----------------
-
+/*
 func TestBTree() {
 	fmt.Println("\nBTree test with key–value pairs and tombstones:")
 	tree := NewBTree(4)
@@ -311,12 +311,12 @@ func TestBTree() {
 		bin, ok := iter.Next()
 		if !ok {
 			break
-    }
-    fmt.Printf("Serialized entry: %v\n", bin)
-}
-
+		}
+		fmt.Printf("Serialized entry: %v\n", bin)
+	}
 
 	// serialize test
 	serialized := tree.Serialize()
 	fmt.Printf("\nSerialized tree: %v\n", serialized)
 }
+*/

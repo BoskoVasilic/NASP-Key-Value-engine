@@ -556,7 +556,7 @@ func (lt *LSMTree) Serialize(path string, bm *BlockManager) {
 		}
 	}
 }
-func Deserialize(path string, bm *BlockManager) *LSMTree {
+func DeserializeLSM(path string, bm *BlockManager) *LSMTree {
 	file := NewBlockManagerWrap(path, bm)
 	_, maxLevelBytes := file.ReadFromCurrentPosition(8)
 	maxLevel := utils.BytesToUint64(maxLevelBytes)
