@@ -55,6 +55,7 @@ func (bmw *BlockManagerWrap) SetCurrentPosition(position int) {
 }
 
 func (bmw *BlockManagerWrap) GetLastWrittenByteOffset() int {
+	bmw.InitializeWriteBuffer()
 	return bmw.fileEnd - BLOCK_SIZE + bmw.currentBufferUsedSpace
 }
 
@@ -64,11 +65,7 @@ func (bmw *BlockManagerWrap) ReadFromCurrentPosition(bytesNeeded int) (int, []by
 	return successfullyRead, data
 }
 
-func (bmw *BlockManagerWrap) WriteToFile(data []byte) (int, error) {
-	if len(data) == 0 {
-		return 0, nil
-	}
-
+func (bmw *BlockManagerWrap) InitializeWriteBuffer() {
 	if len(bmw.writeBuffer) == 0 {
 		switch bmw.writePosition {
 		case -1:
@@ -83,6 +80,14 @@ func (bmw *BlockManagerWrap) WriteToFile(data []byte) (int, error) {
 			bmw.currentBufferUsedSpace = bmw.blockManager.GetCurrentLength(bmw.writeBuffer)
 		}
 	}
+}
+
+func (bmw *BlockManagerWrap) WriteToFile(data []byte) (int, error) {
+	if len(data) == 0 {
+		return 0, nil
+	}
+
+	bmw.InitializeWriteBuffer()
 
 	availableBlockSpace := BLOCK_SIZE - bmw.currentBufferUsedSpace
 
@@ -148,6 +153,8 @@ func (bmw *BlockManagerWrap) WriteToFile(data []byte) (int, error) {
 }
 
 func (bmw *BlockManagerWrap) FlushBuffer(isFromOverwrite bool) error {
+	bmw.InitializeWriteBuffer()
+
 	if len(bmw.writeBuffer) == 0 {
 		return nil
 	}
