@@ -118,7 +118,7 @@ func equalHashes(a, b []byte) bool {
 }
 
 // Serialize returns the leaves hashes serialized
-func (m *MerkleTree) Serialize() []byte {
+func (m *MerkleTree) SerializeMerkle() []byte {
 	buf := make([]byte, 0)
 	leafCount := utils.Uint32ToBytes(uint32(len(m.Leaves)))
 	buf = append(buf, leafCount...)
@@ -129,7 +129,7 @@ func (m *MerkleTree) Serialize() []byte {
 }
 
 // Deserialize creates a MerkleTree from serialized data
-func Deserialize(data []byte) *MerkleTree {
+func DeserializeMerkle(data []byte) *MerkleTree {
 	if len(data) < 4 {
 		return nil // not enough data for leaf count
 	}
@@ -157,13 +157,18 @@ func Deserialize(data []byte) *MerkleTree {
 }
 
 // GetIter returns an iterator over the leaf hashes
-func (m *MerkleTree) GetIter() *utils.Iterator[[]*MerkleNode, []byte] {
-	return utils.NewIterator(&m.Leaves, 0, func(obj *[]*MerkleNode, pos int) ([]byte, bool) {
-		if pos >= len(*obj) {
-			return nil, false
-		}
-		return (*obj)[pos].Hash, true
-	})
+func (m *MerkleTree) GetIter() *utils.Iterator[[]*MerkleNode, int, []byte] {
+    start := 0
+    return utils.NewIterator(&m.Leaves, &start,
+        func(obj *[]*MerkleNode, state *int) ([]byte, bool) {
+            if *state >= len(*obj) {
+                return nil, false
+            }
+            val := (*obj)[*state].Hash
+            *state = *state + 1 // increment state
+            return val, true
+        },
+    )
 }
 
 // Prints the tree for debugging
@@ -219,7 +224,7 @@ func TestMerkle() {
 		fmt.Printf("Leaf hash: %x\n", val)
 	}
 
-	serialized := m1.Serialize()
+	serialized := m1.SerializeMerkle()
 	fmt.Printf("Serialized leaves: %x\n", serialized)
 
 

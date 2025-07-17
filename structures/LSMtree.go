@@ -382,7 +382,7 @@ func (lt *LSMTree) StartMerging(configMergeFunction int, dictenery *GlobalDictio
 					}
 					lt.Levels[i] = &newLevel
 					// Remove the merged files from the current level
-					lt.Serialize("tree_data", lt.BlockMenager)
+					lt.SerializeLSM("tree_data", lt.BlockMenager)
 					fmt.Println("-------------------------------------------------------------------------")
 					fmt.Println("Removing files from level:", i, "from index", first, "to", last)
 					j = 0
@@ -427,7 +427,7 @@ func (lt *LSMTree) StartMerging(configMergeFunction int, dictenery *GlobalDictio
 					lt.Levels[i] = &newLevel
 					j = 0
 					fmt.Println("Data before serialization:", lt)
-					lt.Serialize("tree_data", lt.BlockMenager)
+					lt.SerializeLSM("tree_data", lt.BlockMenager)
 					fmt.Println("-------------------------------------------------------------------------")
 					fmt.Println("Removing files from level:", i, "from index", first, "to", last)
 					for j := 0; j < len(levelForDelete); j++ {
@@ -529,7 +529,7 @@ func (lt *LSMTree) ReadSStabels(key string, bm *BlockManager, dictenery *GlobalD
 	}
 	return nil, false // Key not found in any SSTable
 }
-func (lt *LSMTree) Serialize(path string, bm *BlockManager) {
+func (lt *LSMTree) SerializeLSM(path string, bm *BlockManager) {
 	// Return the levels of the LSM tree
 	fmt.Println("Serializing LSMTree to path:", path)
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
@@ -556,7 +556,7 @@ func (lt *LSMTree) Serialize(path string, bm *BlockManager) {
 		}
 	}
 }
-func Deserialize(path string, bm *BlockManager) *LSMTree {
+func DeserializeLSM(path string, bm *BlockManager) *LSMTree {
 	file := NewBlockManagerWrap(path, bm)
 	_, maxLevelBytes := file.ReadFromCurrentPosition(8)
 	maxLevel := utils.BytesToUint64(maxLevelBytes)
