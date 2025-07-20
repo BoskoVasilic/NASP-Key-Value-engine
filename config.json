@@ -1,10 +1,27 @@
 {
-    "WALSegmentSize": 10,
-    "blockSizeKB": 4,
-    "blockCacheSize": 2,
-    "compression": "Yes",
-    "SSTableFiles": "",
-    "MemtableStrut": "SkipList",
-    "MaxMemtableSize": 30,
-    "MemtableInstanceNum": 5
+  "wal": {
+    "segmentMaxRecords": 10,
+    "blockSizeKB": 4
+  },
+  "blockManager": {
+    "blockSizeKB": 8,            
+    "cacheMaxBlocks": 1024       
+  },
+  "sstable": {
+    "keyCompressionEnabled": true,
+    "layout": "separate",
+    "summarySampling": 5
+  },
+  "memtable": {
+    "structureType": "skiplist",
+    "maxElements": 30,
+    "instanceCount": 5
+  },
+  "cache": {
+    "maxEntries": 10000         
+  },
+  "rateLimit": {
+    "tokens": 10,
+    "resetIntervalMs": 16
+  }
 }
