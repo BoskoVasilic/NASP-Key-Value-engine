@@ -1,0 +1,10 @@
+{
+    "WALSegmentSize": 10,
+    "blockSizeKB": 4,
+    "blockCacheSize": 2,
+    "compression": "Yes",
+    "SSTableFiles": "",
+    "MemtableStrut": "SkipList",
+    "MaxMemtableSize": 30,
+    "MemtableInstanceNum": 5
+}
