@@ -216,7 +216,8 @@ func (lt *LSMTree) Merge(first int, last int, level int, dictenery *GlobalDictio
 			sum += MaxSizes[i-first]
 		}
 		Fileter := NewBloomFilterWithParams(sum, 0.01)
-		path1 := WriteToFilesCompresed(startpath, oneFile, lt.BlockMenager, sum, Fileter, summeryIndex, iter, firstKey, lastKey)
+		tree := NewMerkleTree()
+		path1 := WriteToFilesCompresed(startpath, oneFile, lt.BlockMenager, sum, Fileter, summeryIndex, iter, firstKey, lastKey, tree)
 		fmt.Println("Path1:", path1)
 		lt.AddtoNextLevel(level+1, path1)
 		return path1
@@ -318,7 +319,8 @@ func (lt *LSMTree) Merge(first int, last int, level int, dictenery *GlobalDictio
 			sum += MaxSizes[i-first]
 		}
 		Fileter := NewBloomFilterWithParams(sum, 0.01)
-		path1 := WriteToFile(startpath, oneFile, lt.BlockMenager, sum, Fileter, summeryIndex, iter, firstKey, lastKey)
+		tree := NewMerkleTree()
+		path1 := WriteToFile(startpath, oneFile, lt.BlockMenager, sum, Fileter, summeryIndex, iter, firstKey, lastKey, tree)
 		fmt.Println("Write to file completed")
 		fmt.Println("First key"+firstKey, "Last key: "+lastKey)
 		fmt.Println("Path1:", path1)
@@ -578,7 +580,12 @@ func DeserializeLSM(path string, bm *BlockManager) *LSMTree {
 			pathString := string(pathBytes)
 			fmt.Println("Deserializing path of length", pathLength, ":")
 			fmt.Println("Deserialized path:", pathString, "with length", pathLength)
-			levelPaths = append(levelPaths, &pathString)
+			// Check if file exist as SStabel
+			if CheckSStable(pathString, bm) {
+				levelPaths = append(levelPaths, &pathString)
+			} else {
+				tree.LevelsSize[i]-- // If the file does not exist, we do not count it in the size of the level
+			}
 		}
 		tree.Levels = append(tree.Levels, &levelPaths)
 		fmt.Println("Deserialized level", i, "with paths:", tree.Levels, "and size:", tree.LevelsSize[i])
