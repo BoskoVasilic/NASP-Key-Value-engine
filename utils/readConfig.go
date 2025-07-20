@@ -8,8 +8,7 @@ import (
 
 // Config is split by structures for better organization
 type WALConfig struct {
-	SegmentMaxRecords int `json:"segmentMaxRecords"`
-	BlockSizeKB       int `json:"blockSizeKB"`
+	SegmentMaxBlocks int `json:"segmentMaxBlocks"`
 }
 
 type BlockManagerConfig struct {
@@ -18,14 +17,13 @@ type BlockManagerConfig struct {
 }
 
 type SSTableConfig struct {
-	KeyCompressionEnabled bool   `json:"keyCompressionEnabled"`
-	Layout                string `json:"layout"`
-	SummarySampling       int    `json:"summarySampling"`
+	SummarySampling    int  `json:"summarySampling"`
+	SeparateFiles      bool `json:"separateFiles"`
+	CompressionEnabled bool `json:"compressionEnabled"`
 }
 
 type MemtableConfig struct {
 	StructureType string `json:"structureType"`
-	MaxElements   int    `json:"maxElements"`
 	InstanceCount int    `json:"instanceCount"`
 }
 
@@ -33,7 +31,12 @@ type CacheConfig struct {
 	MaxEntries int `json:"maxEntries"`
 }
 
-type RateLimitConfig struct {
+type LSMTreeConfig struct {
+	AlgorithmType string `json:"algorithmType"`
+	ParamNumber   int    `json:"paramNumber"`
+}
+
+type TokenBucketConfig struct {
 	Tokens          int `json:"tokens"`
 	ResetIntervalMs int `json:"resetIntervalMs"`
 }
@@ -41,39 +44,42 @@ type RateLimitConfig struct {
 // High level config that combines all components
 // This is the main config structure that will be used throughout the application
 type Config struct {
-	WAL          WALConfig          `json:"wal"`
-	BlockManager BlockManagerConfig `json:"blockManager"`
-	SSTable      SSTableConfig      `json:"sstable"`
-	Memtable     MemtableConfig     `json:"memtable"`
-	Cache        CacheConfig        `json:"cache"`
-	RateLimit    RateLimitConfig    `json:"rateLimit"`
+	WAL                WALConfig          `json:"wal"`
+	BlockManager       BlockManagerConfig `json:"blockManager"`
+	SSTable            SSTableConfig      `json:"sstable"`
+	Memtable           MemtableConfig     `json:"memtable"`
+	Cache              CacheConfig        `json:"cache"`
+	LSMTree            LSMTreeConfig      `json:"lsm-tree"`
+	TokenBucketRateLim TokenBucketConfig  `json:"tokenBucketRateLimit"`
 }
 
-// defaultConfig provides a fallback configuration 
+// defaultConfig provides a fallback configuration
 // This is used when the user config is invalid or missing
 var defaultConfig = Config{
 	WAL: WALConfig{
-		SegmentMaxRecords: 10,
-		BlockSizeKB:       4,
+		SegmentMaxBlocks: 10,
 	},
 	BlockManager: BlockManagerConfig{
 		BlockSizeKB:    8,
 		CacheMaxBlocks: 1024,
 	},
 	SSTable: SSTableConfig{
-		KeyCompressionEnabled: true,
-		Layout:                "separate",
-		SummarySampling:       5,
+		SummarySampling:    5,
+		SeparateFiles:      true,
+		CompressionEnabled: true,
 	},
 	Memtable: MemtableConfig{
 		StructureType: "skiplist",
-		MaxElements:   30,
 		InstanceCount: 5,
 	},
 	Cache: CacheConfig{
 		MaxEntries: 10000,
 	},
-	RateLimit: RateLimitConfig{
+	LSMTree: LSMTreeConfig{
+		AlgorithmType: "leveled",
+		ParamNumber:   3,
+	},
+	TokenBucketRateLim: TokenBucketConfig{
 		Tokens:          10,
 		ResetIntervalMs: 16,
 	},
@@ -82,7 +88,6 @@ var defaultConfig = Config{
 // Read user config from config file
 // If any validation fails, it will use the default config and return an error
 // Therefore it will always return a valid config just may not be the user-provided one
-
 func ReadConfig(filePath string) (*Config, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
@@ -99,15 +104,10 @@ func ReadConfig(filePath string) (*Config, error) {
 	var errs []string
 
 	// Validate WAL
-	if userConfig.WAL.SegmentMaxRecords <= 0 {
-		errs = append(errs, fmt.Sprintf("WAL.segmentMaxRecords invalid (%d), defaulting to %d",
-			userConfig.WAL.SegmentMaxRecords, defaultConfig.WAL.SegmentMaxRecords))
-		userConfig.WAL.SegmentMaxRecords = defaultConfig.WAL.SegmentMaxRecords
-	}
-	if userConfig.WAL.BlockSizeKB != 4 && userConfig.WAL.BlockSizeKB != 8 && userConfig.WAL.BlockSizeKB != 16 {
-		errs = append(errs, fmt.Sprintf("WAL.blockSizeKB invalid (%d), defaulting to %d",
-			userConfig.WAL.BlockSizeKB, defaultConfig.WAL.BlockSizeKB))
-		userConfig.WAL.BlockSizeKB = defaultConfig.WAL.BlockSizeKB
+	if userConfig.WAL.SegmentMaxBlocks <= 0 {
+		errs = append(errs, fmt.Sprintf("wal.segmentMaxBlocks invalid (%d), defaulting to %d",
+			userConfig.WAL.SegmentMaxBlocks, defaultConfig.WAL.SegmentMaxBlocks))
+		userConfig.WAL.SegmentMaxBlocks = defaultConfig.WAL.SegmentMaxBlocks
 	}
 
 	// Validate BlockManager
@@ -123,27 +123,18 @@ func ReadConfig(filePath string) (*Config, error) {
 	}
 
 	// Validate SSTable
-	if userConfig.SSTable.Layout != "separate" && userConfig.SSTable.Layout != "combined" {
-		errs = append(errs, fmt.Sprintf("sstable.layout invalid (%s), defaulting to %s",
-			userConfig.SSTable.Layout, defaultConfig.SSTable.Layout))
-		userConfig.SSTable.Layout = defaultConfig.SSTable.Layout
-	}
 	if userConfig.SSTable.SummarySampling <= 0 {
 		errs = append(errs, fmt.Sprintf("sstable.summarySampling invalid (%d), defaulting to %d",
 			userConfig.SSTable.SummarySampling, defaultConfig.SSTable.SummarySampling))
 		userConfig.SSTable.SummarySampling = defaultConfig.SSTable.SummarySampling
 	}
+	// no validation needed for bools: SeparateFiles and CompressionEnabled
 
 	// Validate Memtable
 	if userConfig.Memtable.StructureType != "skiplist" && userConfig.Memtable.StructureType != "hashmap" && userConfig.Memtable.StructureType != "bst" {
 		errs = append(errs, fmt.Sprintf("memtable.structureType invalid (%s), defaulting to %s",
 			userConfig.Memtable.StructureType, defaultConfig.Memtable.StructureType))
 		userConfig.Memtable.StructureType = defaultConfig.Memtable.StructureType
-	}
-	if userConfig.Memtable.MaxElements <= 0 {
-		errs = append(errs, fmt.Sprintf("memtable.maxElements invalid (%d), defaulting to %d",
-			userConfig.Memtable.MaxElements, defaultConfig.Memtable.MaxElements))
-		userConfig.Memtable.MaxElements = defaultConfig.Memtable.MaxElements
 	}
 	if userConfig.Memtable.InstanceCount <= 0 {
 		errs = append(errs, fmt.Sprintf("memtable.instanceCount invalid (%d), defaulting to %d",
@@ -158,16 +149,28 @@ func ReadConfig(filePath string) (*Config, error) {
 		userConfig.Cache.MaxEntries = defaultConfig.Cache.MaxEntries
 	}
 
-	// Validate RateLimit
-	if userConfig.RateLimit.Tokens <= 0 {
-		errs = append(errs, fmt.Sprintf("rateLimit.tokens invalid (%d), defaulting to %d",
-			userConfig.RateLimit.Tokens, defaultConfig.RateLimit.Tokens))
-		userConfig.RateLimit.Tokens = defaultConfig.RateLimit.Tokens
+	// Validate LSMTree
+	if userConfig.LSMTree.AlgorithmType != "leveled" && userConfig.LSMTree.AlgorithmType != "size-tiered" {
+		errs = append(errs, fmt.Sprintf("lsm-tree.algorithmType invalid (%s), defaulting to %s",
+			userConfig.LSMTree.AlgorithmType, defaultConfig.LSMTree.AlgorithmType))
+		userConfig.LSMTree.AlgorithmType = defaultConfig.LSMTree.AlgorithmType
 	}
-	if userConfig.RateLimit.ResetIntervalMs <= 0 {
-		errs = append(errs, fmt.Sprintf("rateLimit.resetIntervalMs invalid (%d), defaulting to %d",
-			userConfig.RateLimit.ResetIntervalMs, defaultConfig.RateLimit.ResetIntervalMs))
-		userConfig.RateLimit.ResetIntervalMs = defaultConfig.RateLimit.ResetIntervalMs
+	if userConfig.LSMTree.ParamNumber <= 0 {
+		errs = append(errs, fmt.Sprintf("lsm-tree.paramNumber invalid (%d), defaulting to %d",
+			userConfig.LSMTree.ParamNumber, defaultConfig.LSMTree.ParamNumber))
+		userConfig.LSMTree.ParamNumber = defaultConfig.LSMTree.ParamNumber
+	}
+
+	// Validate Token Bucket
+	if userConfig.TokenBucketRateLim.Tokens <= 0 {
+		errs = append(errs, fmt.Sprintf("tokenBucketRateLimit.tokens invalid (%d), defaulting to %d",
+			userConfig.TokenBucketRateLim.Tokens, defaultConfig.TokenBucketRateLim.Tokens))
+		userConfig.TokenBucketRateLim.Tokens = defaultConfig.TokenBucketRateLim.Tokens
+	}
+	if userConfig.TokenBucketRateLim.ResetIntervalMs <= 0 {
+		errs = append(errs, fmt.Sprintf("tokenBucketRateLimit.resetIntervalMs invalid (%d), defaulting to %d",
+			userConfig.TokenBucketRateLim.ResetIntervalMs, defaultConfig.TokenBucketRateLim.ResetIntervalMs))
+		userConfig.TokenBucketRateLim.ResetIntervalMs = defaultConfig.TokenBucketRateLim.ResetIntervalMs
 	}
 
 	var finalErr error
