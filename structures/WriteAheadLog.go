@@ -51,13 +51,13 @@ type WriteAheadLogElement struct {
 }
 
 type WriteAheadLog struct {
-	segmentPaths  []WriteAheadLogSegment
-	lastSegment   WriteAheadLogSegment
-	lastLogNumber int
-	lowWaterMark  int
-	status        WriteStatus
-	currentOffset int
-	blockManager  *BlockManager
+	segmentPaths      []WriteAheadLogSegment
+	lastSegment       WriteAheadLogSegment
+	lastLogNumber     int
+	lowWaterMark      int
+	status            WriteStatus
+	currentReadStatus CurrentReadStatus
+	blockManager      *BlockManager
 }
 
 type WriteAheadLogSegment struct {
@@ -66,6 +66,7 @@ type WriteAheadLogSegment struct {
 	segmentPath       WriteAheadLogPaths
 	elements          []WriteAheadLogElement
 	segmentBlocksLeft int
+	blockManagerWrap  *BlockManagerWrap
 }
 
 type WriteAheadLogPaths struct {
@@ -78,10 +79,24 @@ type WriteStatus struct {
 	offset   int
 }
 
+type CurrentReadStatus struct {
+	currentSegment WriteAheadLogSegment
+	currentOffset  int
+	endReached     bool
+}
+
 func NewWriteStatus(filePath string, offset int) *WriteStatus {
 	return &WriteStatus{
 		filePath: filePath,
 		offset:   offset,
+	}
+}
+
+func NewCurrentReadStatus(segment WriteAheadLogSegment, offset int, endReached bool) *CurrentReadStatus {
+	return &CurrentReadStatus{
+		currentSegment: segment,
+		currentOffset:  offset,
+		endReached:     endReached,
 	}
 }
 
@@ -99,22 +114,30 @@ func NewWriteAheadLogElement(keySize uint64, valueSize uint64, key []byte, value
 	}
 }
 
-func NewWriteAheadLog() *WriteAheadLog {
+func NewWriteAheadLog(blockManager *BlockManager) *WriteAheadLog {
 	return &WriteAheadLog{
 		segmentPaths:  make([]WriteAheadLogSegment, 0),
 		lastSegment:   WriteAheadLogSegment{},
 		lastLogNumber: 0,
 		lowWaterMark:  0,
+		blockManager:  blockManager,
+		status:        WriteStatus{},
+		currentReadStatus: CurrentReadStatus{
+			currentSegment: WriteAheadLogSegment{},
+			currentOffset:  -1,
+			endReached:     false,
+		},
 	}
 }
 
-func NewWriteAheadLogSegment(logNumber int, offset int, segmentPath WriteAheadLogPaths) *WriteAheadLogSegment {
+func NewWriteAheadLogSegment(logNumber int, offset int, segmentPath WriteAheadLogPaths, blockManager *BlockManager) *WriteAheadLogSegment {
 	return &WriteAheadLogSegment{
 		logNumber:         logNumber,
 		offset:            offset,
 		segmentPath:       segmentPath,
 		elements:          make([]WriteAheadLogElement, 0),
 		segmentBlocksLeft: SEGMENT_SIZE / BLOCK_SIZE,
+		blockManagerWrap:  NewBlockManagerWrap(segmentPath.segmentPath, blockManager),
 	}
 }
 
@@ -141,7 +164,7 @@ func (wal *WriteAheadLog) GetSegmentPaths() error {
 				log.Println(t.BirthTime())
 				createdTime := uint64(t.BirthTime().Unix())
 				segmentLogPath := NewWriteAheadLogPaths(path, createdTime)
-				segment := NewWriteAheadLogSegment(0, 0, *segmentLogPath)
+				segment := NewWriteAheadLogSegment(0, 0, *segmentLogPath, wal.blockManager)
 				wal.segmentPaths = append(wal.segmentPaths, *segment)
 			}
 		}
@@ -169,22 +192,27 @@ func (wal *WriteAheadLog) InitializeWriteAheadLog() {
 	if len(wal.segmentPaths) == 0 {
 		fmt.Println("No segments found, creating initial segment.")
 		initialSegmentPath := NewWriteAheadLogPaths("wal/wal_1.log", 0)
-		initialSegment := NewWriteAheadLogSegment(1, 0, *initialSegmentPath)
-		initialSegment.InitSegmentHeader(NewBlockManagerWrap(initialSegmentPath.segmentPath, wal.blockManager))
+		initialSegment := NewWriteAheadLogSegment(1, 0, *initialSegmentPath, wal.blockManager)
+		initialSegment.InitSegmentHeader()
 		wal.segmentPaths = append(wal.segmentPaths, *initialSegment)
 		wal.lastSegment = *initialSegment
 		wal.lastLogNumber = 1
 	} else {
 		for i := range wal.segmentPaths {
 			lastSegment := wal.segmentPaths[len(wal.segmentPaths)-1-i]
-			offset, err := wal.ReadSegmentHeader(lastSegment.segmentPath.segmentPath, lastSegment.segmentPath.created)
+			offset, err := wal.ReadSegmentHeader(&lastSegment)
 			if err != nil {
 				log.Fatalf("Error reading segment header: %v", err)
 			}
 			if offset < 0 {
 				log.Fatalf("Invalid segment header for segment %s: %v", lastSegment.segmentPath.segmentPath, err)
-			} else if offset == 0 {
+				wal.segmentPaths = append(wal.segmentPaths[:len(wal.segmentPaths)-1-i], wal.segmentPaths[len(wal.segmentPaths)-1-i:]...)
 				continue
+			} else if offset == 0 {
+				wal.status = WriteStatus{
+					filePath: lastSegment.segmentPath.segmentPath,
+					offset:   offset,
+				}
 			} else if offset == 8001 {
 				break
 			} else {
@@ -192,15 +220,25 @@ func (wal *WriteAheadLog) InitializeWriteAheadLog() {
 					filePath: lastSegment.segmentPath.segmentPath,
 					offset:   offset,
 				}
+				break
 			}
 		}
+		if wal.status == (WriteStatus{}) {
+			log.Fatal("No valid segment found in WriteAheadLog")
+			initialSegmentPath := NewWriteAheadLogPaths("wal/wal_1.log", 0)
+			initialSegment := NewWriteAheadLogSegment(1, 0, *initialSegmentPath, wal.blockManager)
+			initialSegment.InitSegmentHeader()
+			wal.segmentPaths = append(wal.segmentPaths, *initialSegment)
+			wal.lastSegment = *initialSegment
+			wal.lastLogNumber = 1
+		} else {
+			wal.lastSegment = wal.segmentPaths[len(wal.segmentPaths)-1]
+		}
 	}
-
 }
 
-func (wal *WriteAheadLog) ReadSegmentHeader(segmentPath string, created uint64) (int, error) {
-	blockManagerWrap := NewBlockManagerWrap(segmentPath, wal.blockManager)
-	_, header := blockManagerWrap.ReadFromCurrentPosition(SEGMENT_HEADER_SIZE)
+func (wal *WriteAheadLog) ReadSegmentHeader(segment *WriteAheadLogSegment) (int, error) {
+	_, header := segment.blockManagerWrap.ReadFromCurrentPosition(SEGMENT_HEADER_SIZE)
 
 	if len(header) < SEGMENT_HEADER_SIZE {
 		return 0, fmt.Errorf("segment header is too short: %d bytes", len(header))
@@ -211,15 +249,15 @@ func (wal *WriteAheadLog) ReadSegmentHeader(segmentPath string, created uint64) 
 		return -2, fmt.Errorf("invalid segment header signature")
 	}
 	createdTime := binary.LittleEndian.Uint64(header[SEGMENT_VALID_CHECK : SEGMENT_VALID_CHECK+SEGMENT_CREATED])
-	if createdTime != created {
-		return -2, fmt.Errorf("segment created time mismatch: expected %d, got %d", created, createdTime)
+	if createdTime != segment.segmentPath.created {
+		return -2, fmt.Errorf("segment created time mismatch: expected %d, got %d", segment.segmentPath.created, createdTime)
 	}
 	offset := binary.LittleEndian.Uint64(header[SEGMENT_HEADER_SIZE-SEGMENT_OFFSET : SEGMENT_HEADER_SIZE])
 	fmt.Printf("Segment created time: %d, offset: %d\n", createdTime, offset)
 	return int(offset), nil
 }
 
-func (s *WriteAheadLogSegment) InitSegmentHeader(blockManagerWrap *BlockManagerWrap) {
+func (s *WriteAheadLogSegment) InitSegmentHeader() {
 	segmentHeader := make([]byte, 0)
 	segmentHeader = append(segmentHeader, 0b01110101, 0b01010101, 0b01101111, 0b01001111, 0b01110101, 0b11110000, 0b10011111, 0b10010001, 0b10111011)
 	t, err := times.Stat(s.segmentPath.segmentPath)
@@ -233,17 +271,17 @@ func (s *WriteAheadLogSegment) InitSegmentHeader(blockManagerWrap *BlockManagerW
 		segmentHeader = append(segmentHeader, createdTime...)
 	}
 	segmentHeader = append(segmentHeader, 0, 0, 0, 0)
-	blockManagerWrap.WriteToFile(segmentHeader)
-	blockManagerWrap.FlushBuffer(false)
+	s.blockManagerWrap.WriteToFile(segmentHeader)
+	s.blockManagerWrap.FlushBuffer(false)
 }
 
-func (s *WriteAheadLogSegment) WriteToFile(element *WriteAheadLogElement, blockManagerWrap *BlockManagerWrap) {
-	fmt.Println("Writing to file:", s.segmentPath.segmentPath)
+func (wal *WriteAheadLog) WriteToFile(element *WriteAheadLogElement) {
+	fmt.Println("Writing to file:", wal.lastSegment.segmentPath.segmentPath)
 	data := element.Serialize()
 	newBlock := make([]byte, BLOCK_SIZE)
-	blockManagerWrap.InitializeWriteBuffer()
-	if len(data)+RECORD_TYPE_SIZE+PAYLOAD_SIZE > BLOCK_SIZE-blockManagerWrap.currentBufferUsedSpace {
-		fmt.Println(blockManagerWrap.currentBufferUsedSpace)
+	wal.lastSegment.blockManagerWrap.InitializeWriteBuffer()
+	if len(data)+RECORD_TYPE_SIZE+PAYLOAD_SIZE > BLOCK_SIZE-wal.lastSegment.blockManagerWrap.currentBufferUsedSpace {
+		fmt.Println(wal.lastSegment.blockManagerWrap.currentBufferUsedSpace)
 		allBlocksToWrite := make([]byte, 0)
 		if len(data) > BLOCK_USABLE_SPACE {
 			numBlocks := math.Ceil(float64(len(data)) / float64(BLOCK_USABLE_SPACE))
@@ -277,18 +315,16 @@ func (s *WriteAheadLogSegment) WriteToFile(element *WriteAheadLogElement, blockM
 				}
 			}
 			fmt.Println("Data with type333:", string(allBlocksToWrite))
-			if int(numBlocks) > s.segmentBlocksLeft {
-				blockManagerWrap.WriteToFile(allBlocksToWrite[:s.segmentBlocksLeft*BLOCK_SIZE])
-				s.segmentBlocksLeft = 0
-				newSegment := NewWriteAheadLogSegment(s.logNumber+1, SEGMENT_SIZE*s.logNumber, *NewWriteAheadLogPaths(fmt.Sprintf("wal/segment_%d.log", s.logNumber+1), 0))
-				blockManager := NewBlockManager(8000 * 2)
-				newBlockManagerWrap := NewBlockManagerWrap(newSegment.segmentPath.segmentPath, blockManager)
-				newSegment.InitSegmentHeader(newBlockManagerWrap)
-				newBlockManagerWrap.InitializeWriteBuffer()
-				newBlockManagerWrap.WriteToFile(allBlocksToWrite[s.segmentBlocksLeft*BLOCK_SIZE:])
+			if int(numBlocks) > wal.lastSegment.segmentBlocksLeft {
+				wal.lastSegment.blockManagerWrap.WriteToFile(allBlocksToWrite[:wal.lastSegment.segmentBlocksLeft*BLOCK_SIZE])
+				wal.lastSegment.segmentBlocksLeft = 0
+				newSegment := NewWriteAheadLogSegment(wal.lastSegment.logNumber+1, SEGMENT_SIZE*wal.lastSegment.logNumber, *NewWriteAheadLogPaths(fmt.Sprintf("wal/segment_%d.log", wal.lastSegment.logNumber+1), 0), wal.blockManager)
+				newSegment.InitSegmentHeader()
+				newSegment.blockManagerWrap.InitializeWriteBuffer()
+				newSegment.blockManagerWrap.WriteToFile(allBlocksToWrite[wal.lastSegment.segmentBlocksLeft*BLOCK_SIZE:])
 			} else {
-				blockManagerWrap.WriteToFile(allBlocksToWrite)
-				s.segmentBlocksLeft -= int(numBlocks)
+				wal.lastSegment.blockManagerWrap.WriteToFile(allBlocksToWrite)
+				wal.lastSegment.segmentBlocksLeft -= int(numBlocks)
 			}
 		} else {
 			newBlockOne := make([]byte, 0)
@@ -301,10 +337,10 @@ func (s *WriteAheadLogSegment) WriteToFile(element *WriteAheadLogElement, blockM
 			binary.LittleEndian.PutUint32(newBlockOne[BLOCK_SIZE-BLOCK_HEADER_SIZE:], uint32(newLength))
 			allBlocksToWrite = append(allBlocksToWrite, newBlockOne...) */
 			fmt.Println("Data with type444:", string(newBlockOne))
-			blockManagerWrap.WriteToFile(newBlockOne)
-			s.segmentBlocksLeft -= 1
+			wal.lastSegment.blockManagerWrap.WriteToFile(newBlockOne)
+			wal.lastSegment.segmentBlocksLeft -= 1
 		}
-	} else if len(data)+RECORD_TYPE_SIZE+PAYLOAD_SIZE < BLOCK_SIZE-blockManagerWrap.currentBufferUsedSpace {
+	} else if len(data)+RECORD_TYPE_SIZE+PAYLOAD_SIZE < BLOCK_SIZE-wal.lastSegment.blockManagerWrap.currentBufferUsedSpace {
 		dataWithType := make([]byte, 0)
 		dataWithType = append(dataWithType, byte(FULL))
 		lenBytes := make([]byte, 2)
@@ -312,103 +348,24 @@ func (s *WriteAheadLogSegment) WriteToFile(element *WriteAheadLogElement, blockM
 		dataWithType = append(dataWithType, lenBytes...)
 		dataWithType = append(dataWithType, data...)
 		fmt.Println("Data with type:", string(dataWithType))
-		blockManagerWrap.WriteToFile(dataWithType)
-	} else if len(data)+RECORD_TYPE_SIZE+PAYLOAD_SIZE <= BLOCK_SIZE-blockManagerWrap.currentBufferUsedSpace {
+		wal.lastSegment.blockManagerWrap.WriteToFile(dataWithType)
+	} else if len(data)+RECORD_TYPE_SIZE+PAYLOAD_SIZE <= BLOCK_SIZE-wal.lastSegment.blockManagerWrap.currentBufferUsedSpace {
 		dataWithType := make([]byte, 0)
 		dataWithType = append(dataWithType, byte(FULL))
 		dataWithType = append(dataWithType, data...)
 		fmt.Println("Data with type222:", string(dataWithType))
-		s.segmentBlocksLeft -= 1
-		if s.segmentBlocksLeft == 0 {
-			newSegment := NewWriteAheadLogSegment(s.logNumber+1, SEGMENT_SIZE*s.logNumber, *NewWriteAheadLogPaths(fmt.Sprintf("wal/segment_%d.log", s.logNumber+1), 0))
-			blockManager := NewBlockManager(8000 * 2)
-			newBlockManagerWrap := NewBlockManagerWrap(newSegment.segmentPath.segmentPath, blockManager)
-			newSegment.InitSegmentHeader(newBlockManagerWrap)
-			blockManagerWrap.setAvilableSpace(false)
-			newBlockManagerWrap.InitializeWriteBuffer()
+		wal.lastSegment.segmentBlocksLeft -= 1
+		if wal.lastSegment.segmentBlocksLeft == 0 {
+			newSegment := NewWriteAheadLogSegment(wal.lastSegment.logNumber+1, SEGMENT_SIZE*wal.lastSegment.logNumber, *NewWriteAheadLogPaths(fmt.Sprintf("wal/segment_%d.log", wal.lastSegment.logNumber+1), 0), wal.blockManager)
+			newSegment.InitSegmentHeader()
+			wal.lastSegment.blockManagerWrap.setAvilableSpace(false)
+			newSegment.blockManagerWrap.InitializeWriteBuffer()
 			emptyBlock := make([]byte, BLOCK_SIZE)
 			binary.LittleEndian.PutUint32(emptyBlock[BLOCK_SIZE-BLOCK_HEADER_SIZE:], uint32(0))
-			newBlockManagerWrap.WriteToFile(emptyBlock)
+			newSegment.blockManagerWrap.WriteToFile(emptyBlock)
 		}
-		blockManagerWrap.WriteToFile(dataWithType)
+		wal.lastSegment.blockManagerWrap.WriteToFile(dataWithType)
 	}
-}
-
-func (w *WriteAheadLog) ReadFromFile(blockManagerWrap *BlockManagerWrap, offset int, size int) []byte {
-	_, data := blockManagerWrap.ReadFromFile(offset, size)
-	fmt.Println(string(data))
-
-	/* buffer := bytes.NewReader(data[KEY_SIZE_START:VALUE_SIZE_START])
-	keySize := uint64(0)
-	valueSize := uint64(0)
-
-	err := binary.Read(buffer, binary.LittleEndian, &keySize)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	buffer = bytes.NewReader(data[VALUE_SIZE_START:KEY_START])
-
-	err = binary.Read(buffer, binary.LittleEndian, &valueSize)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	elementSize := SIZE + keySize + valueSize
-
-	fmt.Println(elementSize)
-	fmt.Println(keySize)
-	fmt.Println(valueSize)
-
-	validCheck := CRC32(data[TIMESTAMP_START:elementSize]) == binary.LittleEndian.Uint32(data[CRC_START:CRC_SIZE])
-	if !validCheck {
-		log.Fatal("CRC32 checksum failed")
-	} else {
-		element := Deserialize(data[0:elementSize])
-		fmt.Println(element)
-		//w.AddElement(element)
-	}
-	fmt.Println("Data length: ", len(data))
-
-	var i int = int(elementSize)
-
-	for i < len(data) && len(data)-i > SIZE {
-		fmt.Println("i: ", i)
-		fmt.Println(data[i+KEY_SIZE_START : i+VALUE_SIZE_START])
-		buffer := bytes.NewReader(data[i+KEY_SIZE_START : i+VALUE_SIZE_START])
-		keySize := uint64(0)
-		valueSize := uint64(0)
-
-		err = binary.Read(buffer, binary.LittleEndian, &keySize)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		buffer = bytes.NewReader(data[i+VALUE_SIZE_START : i+KEY_START])
-
-		err = binary.Read(buffer, binary.LittleEndian, &valueSize)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		elementSize := SIZE + keySize + valueSize
-		fmt.Println(elementSize)
-		fmt.Println(keySize)
-		fmt.Println(valueSize)
-
-		validCheck = CRC32(data[i+TIMESTAMP_START:i+int(elementSize)]) == binary.LittleEndian.Uint32(data[i+CRC_START:i+CRC_SIZE])
-		if !validCheck {
-			log.Fatal("CRC32 checksum failed")
-		} else {
-			element := Deserialize(data[i : i+int(elementSize)])
-			//w.AddElement(element)
-			fmt.Println(element)
-		}
-
-		i += int(elementSize)
-	} */
-
-	return data
 }
 
 func (wal *WriteAheadLog) GetWalElement() (*Entry, bool) {
@@ -416,9 +373,30 @@ func (wal *WriteAheadLog) GetWalElement() (*Entry, bool) {
 	fullElementBytes := make([]byte, 0)
 
 	for !fullElementRead {
-		elementType, payloadSize := wal.GetElementTypeAndSize(wal.currentOffset) // diciede if use this offset or global
-		data := wal.ReadFromFile(NewBlockManagerWrap(wal.status.filePath, wal.blockManager), wal.currentOffset, payloadSize)
-		wal.currentOffset += payloadSize
+		elementType, payloadSize := wal.GetElementTypeAndSize(wal.currentReadStatus.currentOffset)
+		if payloadSize == -1 {
+			return nil, false
+		}
+		_, data := wal.currentReadStatus.currentSegment.blockManagerWrap.ReadFromFile(wal.currentReadStatus.currentOffset, payloadSize)
+		wal.currentReadStatus.currentOffset += payloadSize
+		if wal.currentReadStatus.currentOffset >= wal.currentReadStatus.currentSegment.blockManagerWrap.fileEnd {
+			found := -1
+
+			for i, segment := range wal.segmentPaths {
+				if segment.segmentPath.segmentPath == wal.currentReadStatus.currentSegment.segmentPath.segmentPath {
+					wal.currentReadStatus.currentSegment = segment
+					found = i
+					break
+				}
+			}
+
+			if len(wal.segmentPaths)-1 >= found+1 {
+				wal.currentReadStatus.currentOffset = 0
+				wal.currentReadStatus.currentSegment = wal.segmentPaths[found+1]
+			} else {
+				wal.currentReadStatus.endReached = true
+			}
+		}
 		if elementType == FULL || elementType == LAST {
 			fullElementRead = true
 		}
@@ -441,25 +419,70 @@ func (wal *WriteAheadLog) GetWalElement() (*Entry, bool) {
 }
 
 func (wal *WriteAheadLog) GetElementTypeAndSize(offset int) (RecordType, int) {
-	data := wal.ReadFromFile(NewBlockManagerWrap(wal.status.filePath, wal.blockManager), offset, RECORD_TYPE_SIZE+PAYLOAD_SIZE)
+	_, data := wal.currentReadStatus.currentSegment.blockManagerWrap.ReadFromFile(offset, RECORD_TYPE_SIZE+PAYLOAD_SIZE)
 	elementType := data[0]
 	payloadSize := int(binary.LittleEndian.Uint16(data[RECORD_TYPE_SIZE:]))
-	wal.currentOffset = RECORD_TYPE_SIZE + PAYLOAD_SIZE
+	wal.currentReadStatus.currentOffset = RECORD_TYPE_SIZE + PAYLOAD_SIZE
+
+	for payloadSize == 0 {
+		_, data = wal.currentReadStatus.currentSegment.blockManagerWrap.ReadFromFile(wal.currentReadStatus.currentOffset, RECORD_TYPE_SIZE+PAYLOAD_SIZE)
+		elementType = data[0]
+		payloadSize = int(binary.LittleEndian.Uint16(data[RECORD_TYPE_SIZE:]))
+		wal.currentReadStatus.currentOffset = RECORD_TYPE_SIZE + PAYLOAD_SIZE
+		if wal.currentReadStatus.currentOffset >= wal.currentReadStatus.currentSegment.blockManagerWrap.fileEnd {
+			found := -1
+
+			for i, segment := range wal.segmentPaths {
+				if segment.segmentPath.segmentPath == wal.currentReadStatus.currentSegment.segmentPath.segmentPath {
+					wal.currentReadStatus.currentSegment = segment
+					found = i
+					break
+				}
+			}
+
+			if len(wal.segmentPaths)-1 >= found+1 {
+				wal.currentReadStatus.currentOffset = 0
+				wal.currentReadStatus.currentSegment = wal.segmentPaths[found+1]
+			} else {
+				wal.currentReadStatus.endReached = true
+				return RecordType(0), -1
+			}
+		}
+	}
+
 	return RecordType(elementType), payloadSize
 }
 
-func (wal *WriteAheadLog) GetWalElementByElement() *Entry {
-	if wal.currentOffset == -1 {
-		wal.currentOffset = wal.status.offset
+func (wal *WriteAheadLog) GetWalElementByElement() (*Entry, bool) {
+	if wal.currentReadStatus.endReached {
+		fmt.Println("End of WAL reached.")
+		return nil, false
 	}
+	if wal.currentReadStatus.currentOffset == -1 {
+		wal.currentReadStatus.currentOffset = wal.status.offset
+	}
+	if wal.currentReadStatus.currentSegment.segmentPath.segmentPath == "" {
+		for _, segment := range wal.segmentPaths {
+			if segment.segmentPath.segmentPath == wal.status.filePath {
+				wal.currentReadStatus.currentSegment = segment
+				break
+			}
+		}
+	}
+
 	element, check := wal.GetWalElement()
 
-	for !check {
+	for !check && !wal.currentReadStatus.endReached {
 		fmt.Println("CRC32 checksum failed. Trying next element...")
 		element, check = wal.GetWalElement()
 	}
 
-	return element
+	if wal.currentReadStatus.endReached {
+		fmt.Println("End of WAL reached.")
+		return nil, false
+	}
+
+	return element, true
 }
 
 func (wal *WriteAheadLog) SetStatus(filePath string, offset int) {
