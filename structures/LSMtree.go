@@ -1,0 +1,587 @@
+package structures
+
+import (
+	"KVengine/utils"
+	"fmt"
+	"os"
+	"time"
+)
+
+type LSMTree struct {
+	maxLevel     int
+	currentLevel int
+	LevelsSize   []int
+	Levels       []*[]*string
+	BlockMenager *BlockManager
+	// Levels is a slice of pointers to slices of strings, representing the levels of the LSM tree.
+	// Each level contains a slice of strings, which can be thought of as key-value pairs or records.
+}
+
+func NewLSMTree(maxLevel int, BlockMenager *BlockManager) *LSMTree {
+	return &LSMTree{
+		Levels:       make([]*[]*string, 0),
+		currentLevel: 0,
+		maxLevel:     maxLevel,
+		LevelsSize:   make([]int, maxLevel),
+		BlockMenager: BlockMenager,
+		// LevelsSize is a slice that keeps track of the size of each level in the LSM tree.
+		// It is initialized to a slice of integers with length equal to maxLevel, all set to zero.
+		// Initialize the LSM tree with an empty slice of levels.
+	}
+}
+func (lt *LSMTree) AddLevel(path string) {
+	if len(lt.Levels) == 0 {
+		// If the Levels slice is empty, initialize it with a new slice.
+		lt.Levels = append(lt.Levels, &[]*string{})
+	}
+	level1 := lt.Levels[0]
+	PathStringAdded := []*string{&path}
+	*level1 = append(PathStringAdded, *level1...)
+	lt.LevelsSize[0]++
+}
+func (lt *LSMTree) Merge(first int, last int, level int, dictenery *GlobalDictionary, oneFile bool, summeryIndex uint64) string {
+	DataCompresedLists := make([]bool, 0)
+	MaxSizes := make([]int, 0)
+	OneFileLise := make([]bool, 0)
+	levleSData := *(lt.Levels[level])
+	last = last + 1
+	ForceCompresion := false
+	firstKey := ""
+	lastKey := ""
+	for i := first; i < last; i++ {
+		file := NewBlockManagerWrap(*levleSData[i], lt.BlockMenager)
+		_, IsCompresed := file.ReadFromCurrentPosition(1)
+		_, OneFile := file.ReadFromCurrentPosition(1)
+		fmt.Println("IsCompresed:", IsCompresed[0])
+		fmt.Println("_________________________________________________-")
+		_, data := file.ReadFromCurrentPosition(8)
+		maxSizeC := utils.BytesToUint64(data)
+		file.SetCurrentPosition(0)
+		fmt.Println("Path", *levleSData[i])
+		stringKeyFirst, stringKeyLast := GetFirstAndLAstKeyCompresed(*levleSData[i], lt.BlockMenager)
+		if firstKey == "" {
+			firstKey = stringKeyFirst
+		}
+		if lastKey == "" {
+			lastKey = stringKeyLast
+		}
+		if firstKey > stringKeyFirst {
+			firstKey = stringKeyFirst
+		}
+		if lastKey < stringKeyLast {
+			lastKey = stringKeyLast
+		}
+		if IsCompresed[0] == 1 {
+			DataCompresedLists = append(DataCompresedLists, true)
+			ForceCompresion = true
+		} else {
+			DataCompresedLists = append(DataCompresedLists, false)
+		}
+		if OneFile[0] == 1 {
+			OneFileLise = append(OneFileLise, true)
+		} else {
+			OneFileLise = append(OneFileLise, false)
+		}
+		MaxSizes = append(MaxSizes, int(maxSizeC))
+	}
+
+	if ForceCompresion {
+		// If any of the files are compressed, we need to compres all
+
+		pq := NewPriorityQueue(func(a, b *MergeData[ExportEntry]) bool {
+			if a.GetRecord().GetKey() == b.GetRecord().GetKey() {
+				return a.GetRecord().time > b.GetRecord().time
+			}
+			return a.GetRecord().GetKey() < b.GetRecord().GetKey()
+		})
+		for i := first; i < last; i++ {
+			if DataCompresedLists[i-first] {
+				file := GetDataFile(*levleSData[i], lt.BlockMenager)
+				mergaData := NewMergeData[ExportEntry](file, nil, func(mergeData *MergeData[ExportEntry]) {
+					if mergeData.Read >= mergeData.maxSize {
+						//fmt.Println("Reading more than max size")
+						//fmt.Println("File name:", mergeData.Read, "Max size:", mergeData.maxSize)
+						mergeData.SetRecord(&ExportEntry{
+							key:       0,
+							value:     nil,
+							tombstone: false,
+							time:      0,
+						})
+						mergeData.Read++
+						return
+					}
+					entry := ReadDataCompressed(mergeData.fileReader)
+					mergeData.SetRecord(entry)
+					mergeData.Read++
+				}, MaxSizes[i-first])
+				mergaData.function(mergaData)
+				pq.Push(mergaData)
+				//fmt.Println("Priority Queue Data", pq.data)
+			} else {
+				offset := 0
+				if OneFileLise[i-first] {
+					offset = 58
+				}
+				file := GetDataFile(*levleSData[i], lt.BlockMenager)
+				fileIndex := GetIndexFile(*levleSData[i], lt.BlockMenager)
+				list_Enterys := GetListInex(fileIndex, uint64(MaxSizes[i-first]))
+				list_ExportEntries := dictenery.ConvertListToExportEntry(list_Enterys)
+				mergaData := NewMergeData[ExportEntry](file, list_ExportEntries, func(mergeData *MergeData[ExportEntry]) {
+					if mergeData.Read >= mergeData.maxSize {
+						//fmt.Println("Reading more than max size")
+						//fmt.Println("File name:", mergeData.Read, "Max size:", mergeData.maxSize)
+						mergeData.SetRecord(&ExportEntry{
+							key:       0,
+							value:     nil,
+							tombstone: false,
+							time:      0,
+						})
+						mergeData.Read++
+						return
+					}
+					EntryEnters := list_ExportEntries.GetEntrie(mergeData.Read)
+					offsetData := utils.BytesToUint64(EntryEnters.value) + uint64(offset)
+					mergeData.fileReader.SetCurrentPosition(int(offsetData))
+					entry := ReadData(mergeData.fileReader)
+					ExportEntry := NewExportEntryFromEntry(entry, EntryEnters.key)
+					mergeData.SetRecord(ExportEntry)
+					mergeData.Read++
+				}, MaxSizes[i-first])
+				mergaData.function(mergaData)
+				pq.Push(mergaData)
+			}
+		}
+		noKey := uint64(0)
+		iter := utils.NewIterator(pq, &noKey, func(pq *PriorityQueue[MergeData[ExportEntry]], s *uint64) (*ExportEntry, bool) {
+			if pq == nil || pq.Len() == 0 {
+				return nil, false
+			}
+			top := pq.Peek()
+			pq.Pop()
+			//fmt.Println("Read value", top.Read)
+			//fmt.Println("Top Record:", top.GetRecord().GetKey(), "Value:", top.GetRecord().value, "Deleted:", top.GetRecord().deleted, "Time:", top.GetRecord().time)
+			for top.Read > top.maxSize {
+				// Handling no more data anywhere
+				if pq.Len() == 0 {
+					return nil, false
+				}
+				top = pq.Peek()
+				pq.Pop()
+			}
+			//fmt.Println("AFter for loop", top.Read)
+			if top == nil {
+				return nil, false
+			}
+			record := top.GetRecord()
+			//fmt.Println("FIRST record past")
+			if record == nil {
+				return nil, false
+			}
+			//fmt.Println("Record before entering:", record.GetKey(), "Value:", record.value, "Deleted:", record.deleted, "Time:", record.time)
+			for record.GetKey() == *s {
+				top.function(top)
+				//fmt.Println("Record after function call:", record.GetKey(), "Value:", record.value, "Deleted:", record.deleted, "Time:", record.time)
+				//fmt.Println("Top Record:", top.GetRecord().GetKey(), "Value:", top.GetRecord().value, "Deleted:", top.GetRecord().deleted, "Time:", top.GetRecord().time)
+				pq.Push(top)
+				top = pq.Peek()
+				pq.Pop()
+				for top.Read > top.maxSize {
+					//Handling no more data enywhere
+					if pq.Len() == 0 {
+						return nil, false
+					}
+					top = pq.Peek()
+					pq.Pop()
+				}
+				record = top.GetRecord()
+			}
+			*s = record.GetKey()
+			recordCopy := &ExportEntry{
+				key:       record.GetKey(),
+				value:     record.value,
+				tombstone: record.tombstone,
+				time:      record.time,
+			}
+			// Create a copy of the record to return
+			// This is to avoid returning a pointer to the original record
+			//fmt.Println("Returning Record:", recordCopy.GetKey(), "Value:", recordCopy.value, "Deleted:", recordCopy.deleted, "Time:", recordCopy.time)
+			top.function(top)
+			pq.Push(top)
+			return recordCopy, true
+		})
+		startpath := "SSTabel" + time.Now().Format(time.RFC1123)
+		fmt.Println("Start path:", startpath)
+		sum := 0
+		for i := first; i < last; i++ {
+			sum += MaxSizes[i-first]
+		}
+		Fileter := NewBloomFilterWithParams(sum, 0.01)
+		path1 := WriteToFilesCompresed(startpath, oneFile, lt.BlockMenager, sum, Fileter, summeryIndex, iter, firstKey, lastKey)
+		fmt.Println("Path1:", path1)
+		lt.AddtoNextLevel(level+1, path1)
+		return path1
+	} else {
+		pq := NewPriorityQueue(func(a, b *MergeData[Entry]) bool {
+			if a.GetRecord().GetKey() == b.GetRecord().GetKey() {
+				return a.GetRecord().time > b.GetRecord().time
+
+			}
+			return a.GetRecord().GetKey() < b.GetRecord().GetKey()
+		})
+		// We now that all files are not compresed :)
+		for i := first; i < last; i++ { // Make a function that returns file with data from my path
+			file := GetDataFile(*levleSData[i], lt.BlockMenager)
+			mergaData := NewMergeData[Entry](file, nil, func(mergeData *MergeData[Entry]) {
+				if mergeData.Read >= mergeData.maxSize {
+					//fmt.Println("Reading more than max size")
+					//fmt.Println("File name:", mergeData.Read, "Max size:", mergeData.maxSize)
+					mergeData.SetRecord(&Entry{
+						key:     "",
+						value:   nil,
+						deleted: false,
+						time:    0,
+					})
+					mergeData.Read++
+					return
+				}
+				entry := ReadData(mergeData.fileReader)
+				mergeData.SetRecord(entry)
+				mergeData.Read++
+			}, MaxSizes[i-first])
+			mergaData.function(mergaData)
+			//fmt.Println("Record:", mergaData.GetRecord().GetKey(), "Value:", mergaData.GetRecord().value, "Deleted:", mergaData.GetRecord().deleted, "Time:", mergaData.GetRecord().time)
+			pq.Push(mergaData)
+			//fmt.Println("Priority Queue Data", pq.data)
+		}
+		emptyString := ""
+		iter := utils.NewIterator(pq, &emptyString, func(pq *PriorityQueue[MergeData[Entry]], s *string) (*Entry, bool) {
+			if pq == nil || pq.Len() == 0 {
+				return nil, false
+			}
+			top := pq.Peek()
+			pq.Pop()
+			//fmt.Println("Read value", top.Read)
+			//fmt.Println("Top Record:", top.GetRecord().GetKey(), "Value:", top.GetRecord().value, "Deleted:", top.GetRecord().deleted, "Time:", top.GetRecord().time)
+			for top.Read > top.maxSize {
+				// Handling no more data anywhere
+				if pq.Len() == 0 {
+					return nil, false
+				}
+				top = pq.Peek()
+				pq.Pop()
+			}
+			//fmt.Println("AFter for loop", top.Read)
+			if top == nil {
+				return nil, false
+			}
+			record := top.GetRecord()
+			//fmt.Println("FIRST record past")
+			if record == nil {
+				return nil, false
+			}
+			//fmt.Println("Record before entering:", record.GetKey(), "Value:", record.value, "Deleted:", record.deleted, "Time:", record.time)
+			for record.GetKey() == *s {
+				top.function(top)
+				//fmt.Println("Record after function call:", record.GetKey(), "Value:", record.value, "Deleted:", record.deleted, "Time:", record.time)
+				//fmt.Println("Top Record:", top.GetRecord().GetKey(), "Value:", top.GetRecord().value, "Deleted:", top.GetRecord().deleted, "Time:", top.GetRecord().time)
+				pq.Push(top)
+				top = pq.Peek()
+				pq.Pop()
+				for top.Read > top.maxSize {
+					//Handling no more data enywhere
+					if pq.Len() == 0 {
+						return nil, false
+					}
+					top = pq.Peek()
+					pq.Pop()
+				}
+				record = top.GetRecord()
+			}
+			*s = record.GetKey()
+			recordCopy := &Entry{
+				key:     record.GetKey(),
+				value:   record.value,
+				deleted: record.deleted,
+				time:    record.time,
+			}
+			// Create a copy of the record to return
+			// This is to avoid returning a pointer to the original record
+			//fmt.Println("Returning Record:", recordCopy.GetKey(), "Value:", recordCopy.value, "Deleted:", recordCopy.deleted, "Time:", recordCopy.time)
+			top.function(top)
+			pq.Push(top)
+			return recordCopy, true
+		})
+		startpath := "SSTabel" + time.Now().Format(time.RFC1123)
+		fmt.Println("Start path:", startpath)
+		sum := 0
+		for i := first; i < last; i++ {
+			sum += MaxSizes[i-first]
+		}
+		Fileter := NewBloomFilterWithParams(sum, 0.01)
+		path1 := WriteToFile(startpath, oneFile, lt.BlockMenager, sum, Fileter, summeryIndex, iter, firstKey, lastKey)
+		fmt.Println("Write to file completed")
+		fmt.Println("First key"+firstKey, "Last key: "+lastKey)
+		fmt.Println("Path1:", path1)
+		lt.AddtoNextLevel(level+1, path1)
+		return path1
+	}
+}
+func (lt *LSMTree) AddtoNextLevel(level int, path string) {
+	if level >= lt.maxLevel {
+		level = lt.maxLevel - 1 // Ensure we do not exceed the maximum level
+		if len(lt.Levels) <= level {
+			// If the Levels slice is empty, initialize it with a new slice.
+			lt.Levels = append(lt.Levels, &[]*string{})
+		}
+		if lt.LevelsSize[level] == 0 {
+			// If the size of the current level is zero, initialize it with a new slice.
+			lt.Levels[level] = &[]*string{}
+		}
+		level1 := lt.Levels[level]
+		appended := []*string{&path}
+		*level1 = append(*level1, appended...)
+		lt.LevelsSize[level]++
+		return
+	}
+	if len(lt.Levels) <= level {
+		// If the Levels slice is empty, initialize it with a new slice.
+		lt.Levels = append(lt.Levels, &[]*string{})
+	}
+	if lt.LevelsSize[level] == 0 {
+		// If the size of the current level is zero, initialize it with a new slice.
+		lt.Levels[level] = &[]*string{}
+	}
+	level1 := lt.Levels[level]
+	appended := []*string{&path}
+	*level1 = append(appended, *level1...)
+	lt.LevelsSize[level]++
+}
+func (lt *LSMTree) StartMerging(configMergeFunction int, dictenery *GlobalDictionary, oneFile bool, summeryIndex uint64, MergeSize int) {
+	i := 0
+	for i < len(lt.Levels) {
+		if lt.LevelsSize[i] > 0 {
+			if configMergeFunction == 0 {
+				first, last, levle, ok := lt.GetSizeTieredMerge(i, MergeSize)
+				if ok {
+					fmt.Println("Merging level:", i, "from", first, "to", last, "with level:", levle)
+					path := lt.Merge(first, last, levle, dictenery, oneFile, summeryIndex)
+					fmt.Println("Merged path:", path)
+					// After merging, we need to remove the merged files from the current level
+					lt.LevelsSize[i] -= (last - first + 1)
+					level := lt.Levels[i]
+					j := 0
+					levelForDelete := make([]*string, 0)
+					newLevel := make([]*string, 0)
+					for j < len(*level) {
+						if j < first || j > last {
+							newLevel = append(newLevel, (*level)[j])
+						} else {
+							levelForDelete = append(levelForDelete, (*level)[j])
+						}
+						j++
+					}
+					lt.Levels[i] = &newLevel
+					// Remove the merged files from the current level
+					lt.SerializeLSM("tree_data", lt.BlockMenager)
+					fmt.Println("-------------------------------------------------------------------------")
+					fmt.Println("Removing files from level:", i, "from index", first, "to", last)
+					j = 0
+					for j := 0; j < len(levelForDelete); j++ {
+						fmt.Println("Removing file at index:", j, "from level", i, "file:", levelForDelete[j])
+						RemoveSStabel(*levelForDelete[j], lt.BlockMenager)
+					}
+					fmt.Println("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+
+					// Update the level with the new level without the merged files
+
+					j = 0
+					levelSerch := *lt.Levels[i]
+					for j < len(levelSerch) {
+						fmt.Println("Level at index", j, "has path", levelSerch[j])
+					}
+					fmt.Println("--____________________--")
+				}
+			} else {
+				// Implement other merge strategies here
+				first, last, levle, ok := lt.GetLevelTieredMerge(i, MergeSize)
+				if ok {
+					fmt.Println("Merging level:", i, "from", first, "to", last, "with level:", levle)
+					path := lt.Merge(first, last, levle, dictenery, oneFile, summeryIndex)
+					fmt.Println("Merged path:", path)
+					// After merging, we need to remove the merged files from the current level
+					lt.LevelsSize[i] -= (last - first + 1)
+					// Remove the merged files from the current level
+					level := lt.Levels[i]
+					j := 0
+					levelForDelete := make([]*string, 0)
+					newLevel := make([]*string, 0)
+					for j < len(*level) {
+						if j < first || j > last {
+							newLevel = append(newLevel, (*level)[j])
+						} else {
+							levelForDelete = append(levelForDelete, (*level)[j])
+						}
+						j++
+					}
+					// Update the level with the new level without the merged files
+					lt.Levels[i] = &newLevel
+					j = 0
+					fmt.Println("Data before serialization:", lt)
+					lt.SerializeLSM("tree_data", lt.BlockMenager)
+					fmt.Println("-------------------------------------------------------------------------")
+					fmt.Println("Removing files from level:", i, "from index", first, "to", last)
+					for j := 0; j < len(levelForDelete); j++ {
+						fmt.Println("Removing file at index:", j, "from level", i, "file:", levelForDelete[j])
+						RemoveSStabel(*levelForDelete[j], lt.BlockMenager)
+					}
+					fmt.Println("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+
+					levelSerch := *lt.Levels[i]
+					for j < len(levelSerch) {
+						fmt.Println("Level at index", j, "has path", levelSerch[j])
+					}
+					fmt.Println("--____________________--")
+				}
+			}
+
+		}
+		i++
+	}
+}
+func (lt *LSMTree) GetSizeTieredMerge(levle int, mergeSize int) (int, int, int, bool) {
+	if levle >= lt.maxLevel {
+		return 0, 0, 0, false // Ensure we do not exceed the maximum level
+	}
+	if len(lt.Levels) <= levle || lt.LevelsSize[levle] == 0 {
+		return 0, 0, 0, false // No data to merge
+	}
+	first := 0
+	last := lt.LevelsSize[levle]
+	if last < mergeSize {
+		return first, last, levle, false // Not enough data to merge
+	}
+	if last >= mergeSize {
+		last = mergeSize - 1 // Limit to merge size
+	}
+	return first, last, levle, true // Ready for merging
+}
+func (lt *LSMTree) GetLevelTieredMerge(level int, mergeSize int) (int, int, int, bool) {
+	if level >= lt.maxLevel {
+		return level, 0, 0, false // Ensure we do not exceed the maximum level
+	}
+	if len(lt.Levels) <= level || lt.LevelsSize[level] == 0 {
+		return level, 0, 0, false // No data to merge
+	} //Make merging easy ready first and last key
+	if lt.LevelsSize[level] < mergeSize {
+		return level, 0, 0, false // Not enough data to merge
+	}
+	last := lt.LevelsSize[level] - 1
+	path := *(*lt.Levels[level])[last]
+	fmt.Println("Path to last file in level", level, ":", path)
+	FirstFKey, LastFKey := GetFirstAndLAstKeyCompresed(path, lt.BlockMenager)
+	last -= 1
+	for last >= 0 {
+		path := *(*lt.Levels[level])[last]
+		fmt.Println("Path to last file in level", level, ":", path)
+		FirstSKey, LastSKey := GetFirstAndLAstKeyCompresed(path, lt.BlockMenager)
+		if LastSKey >= FirstFKey || FirstSKey <= LastFKey {
+			return last, mergeSize - 1, level, true // Overlap detected in either order, ready for merging
+		}
+		last--
+	}
+	// Rearenge lsm tree
+	last = lt.LevelsSize[level] - 1
+	pathToLast := *(*lt.Levels[level])[last]
+	// If we reach here, it means there is no overlap, so we cant merge just send the last file to next level
+	// Remove the last file from the current level
+	levelData := lt.Levels[level]
+	newLevelData := make([]*string, 0)
+	for i := 0; i < len(*levelData); i++ {
+		if i != last {
+			newLevelData = append(newLevelData, (*levelData)[i])
+		}
+	}
+	lt.Levels[level] = &newLevelData
+	lt.LevelsSize[level]--
+	lt.AddtoNextLevel(level+1, pathToLast)
+	return level, 0, lt.LevelsSize[level] - 1, false // Ready for merging
+}
+func (lt *LSMTree) ReadSStabels(key string, bm *BlockManager, dictenery *GlobalDictionary) (*Entry, bool) {
+	// Implement reading from SSTable here
+	// This function should read the SSTable and return the ExportEntry for the given key
+	i := 0
+	fmt.Println("Reading from LSMTree for key:", key)
+	fmt.Println("Levels size:", len(lt.Levels))
+	for i < len(lt.Levels) {
+		fmt.Println("Checking level:", i, "with size:", lt.LevelsSize[i])
+		if lt.LevelsSize[i] > 0 {
+			level := lt.Levels[i]
+			for j := 0; j < lt.LevelsSize[i]; j++ {
+				filePath := *(*level)[j]
+				// Read the data from the file
+				entry, found := ReadSStabel(filePath, key, bm, dictenery)
+				if found {
+					return entry, true
+				}
+			}
+		}
+		i++
+	}
+	return nil, false // Key not found in any SSTable
+}
+func (lt *LSMTree) SerializeLSM(path string, bm *BlockManager) {
+	// Return the levels of the LSM tree
+	fmt.Println("Serializing LSMTree to path:", path)
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		// If the file does  exist, remove it
+		err := os.Remove(path)
+		if err != nil {
+			fmt.Println("Error removing existing file:", err)
+			return
+		}
+	}
+	file := NewBlockManagerWrap(path, bm)
+	defer file.FlushBuffer(false)
+	file.WriteToFile(utils.Uint64ToBytes(uint64(lt.maxLevel)))
+	file.WriteToFile(utils.Uint64ToBytes(uint64(len(lt.Levels))))
+	for i := 0; i < len(lt.Levels); i++ {
+		level := lt.Levels[i]
+		file.WriteToFile(utils.Uint64ToBytes(uint64(lt.LevelsSize[i])))
+		fmt.Println("Serializing level", i, "with size", lt.LevelsSize[i])
+		for j := 0; j < lt.LevelsSize[i]; j++ {
+			path := *(*level)[j]
+			fmt.Println("Serializing path:", path)
+			file.WriteToFile(utils.Uint64ToBytes(uint64(len(path))))
+			file.WriteToFile([]byte(path))
+		}
+	}
+}
+func DeserializeLSM(path string, bm *BlockManager) *LSMTree {
+	file := NewBlockManagerWrap(path, bm)
+	_, maxLevelBytes := file.ReadFromCurrentPosition(8)
+	maxLevel := utils.BytesToUint64(maxLevelBytes)
+	_, levelsCountBytes := file.ReadFromCurrentPosition(8)
+	levelsCount := utils.BytesToUint64(levelsCountBytes)
+	fmt.Println("levelsCount:", levelsCount, "maxLevel:", maxLevel)
+	tree := NewLSMTree(int(maxLevel), bm)
+	for i := 0; i < int(levelsCount); i++ {
+		_, sizeBytes := file.ReadFromCurrentPosition(8)
+		size := utils.BytesToUint64(sizeBytes)
+		levelPaths := make([]*string, 0)
+		fmt.Println("Deserializing level", i, "with size", int(size))
+
+		tree.LevelsSize[i] = int(size)
+		for j := 0; j < int(size); j++ {
+			_, pathLengthBytes := file.ReadFromCurrentPosition(8)
+			pathLength := utils.BytesToUint64(pathLengthBytes)
+			_, pathBytes := file.ReadFromCurrentPosition(int(pathLength))
+			pathString := string(pathBytes)
+			fmt.Println("Deserializing path of length", pathLength, ":")
+			fmt.Println("Deserialized path:", pathString, "with length", pathLength)
+			levelPaths = append(levelPaths, &pathString)
+		}
+		tree.Levels = append(tree.Levels, &levelPaths)
+		fmt.Println("Deserialized level", i, "with paths:", tree.Levels, "and size:", tree.LevelsSize[i])
+	}
+	return tree
+}

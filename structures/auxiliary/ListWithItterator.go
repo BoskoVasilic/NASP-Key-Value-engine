@@ -35,3 +35,10 @@ func (list *ListWithIterator[T]) GetIter() *utils.Iterator[[]*T, int, *T] {
 		return (*entries)[*pos-1], true
 	})
 }
+func (list *ListWithIterator[T]) GetEntrie(index int) T {
+	if index < 0 || index >= len(list.entries) {
+		var zero T
+		return zero // Return zero value of T if index is out of bounds
+	}
+	return *list.entries[index]
+}
