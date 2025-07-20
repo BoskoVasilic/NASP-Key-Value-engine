@@ -195,6 +195,7 @@ func indent(level int) string {
 }
 
 // Tests all MerkleTree operations
+/*
 func TestMerkle() {
 	m1 := NewMerkleTree()
 	m2 := NewMerkleTree()
@@ -227,7 +228,6 @@ func TestMerkle() {
 	serialized := m1.SerializeMerkle()
 	fmt.Printf("Serialized leaves: %x\n", serialized)
 
-
 	same, index := CompareTreesWithIndex(m1, m2)
 	if same {
 		fmt.Println("Merkle trees are identical.")
@@ -238,6 +238,5 @@ func TestMerkle() {
 			fmt.Printf("Trees differ at leaf index %d\n", index)
 		}
 	}
-
 }
-
+*/

@@ -198,7 +198,7 @@ func replaceChild(children []*BTreeNode, old, left, right *BTreeNode) []*BTreeNo
 	return newChildren
 }
 
-// ---------------- iterator ----------------
+
 
 // GetIter returns an iterator over the BTree entries in sorted (in‑order) order.
 // It uses an explicit stack (slice) for traversal and returns Entry values directly.
@@ -292,7 +292,7 @@ func PrintTree(node *BTreeNode, level int) {
 }
 
 // ---------------- minimal test ----------------
-
+/*
 func TestBTree() {
 	fmt.Println("\nBTree test with key–value pairs and tombstones:")
 	tree := NewBTree(4)
@@ -338,12 +338,12 @@ func TestBTree() {
 		bin, ok := iter.Next()
 		if !ok {
 			break
-    }
-    fmt.Printf("Serialized entry: %v\n", bin)
-}
-
+		}
+		fmt.Printf("Serialized entry: %v\n", bin)
+	}
 
 	// serialize test
 	serialized := tree.Serialize()
 	fmt.Printf("\nSerialized tree: %v\n", serialized)
 }
+*/
