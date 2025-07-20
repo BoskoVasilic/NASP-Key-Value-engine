@@ -208,12 +208,12 @@ func (wal *WriteAheadLog) InitializeWriteAheadLog() {
 				log.Fatalf("Invalid segment header for segment %s: %v", lastSegment.segmentPath.segmentPath, err)
 				wal.segmentPaths = append(wal.segmentPaths[:len(wal.segmentPaths)-1-i], wal.segmentPaths[len(wal.segmentPaths)-1-i:]...)
 				continue
-			} else if offset == 0 {
+			} else if offset == SEGMENT_HEADER_SIZE {
 				wal.status = WriteStatus{
 					filePath: lastSegment.segmentPath.segmentPath,
 					offset:   offset,
 				}
-			} else if offset == 8001 {
+			} else if offset == SEGMENT_SIZE+1 {
 				break
 			} else {
 				wal.status = WriteStatus{
@@ -252,7 +252,7 @@ func (wal *WriteAheadLog) ReadSegmentHeader(segment *WriteAheadLogSegment) (int,
 	if createdTime != segment.segmentPath.created {
 		return -2, fmt.Errorf("segment created time mismatch: expected %d, got %d", segment.segmentPath.created, createdTime)
 	}
-	offset := binary.LittleEndian.Uint64(header[SEGMENT_HEADER_SIZE-SEGMENT_OFFSET : SEGMENT_HEADER_SIZE])
+	offset := binary.LittleEndian.Uint32(header[SEGMENT_HEADER_SIZE-SEGMENT_OFFSET : SEGMENT_HEADER_SIZE])
 	fmt.Printf("Segment created time: %d, offset: %d\n", createdTime, offset)
 	return int(offset), nil
 }
@@ -270,7 +270,9 @@ func (s *WriteAheadLogSegment) InitSegmentHeader() {
 		binary.LittleEndian.PutUint64(createdTime, uint64(t.BirthTime().Unix()))
 		segmentHeader = append(segmentHeader, createdTime...)
 	}
-	segmentHeader = append(segmentHeader, 0, 0, 0, 0)
+	headerSize := make([]byte, 4)
+	binary.LittleEndian.PutUint32(headerSize, uint32(SEGMENT_HEADER_SIZE))
+	segmentHeader = append(segmentHeader, headerSize...)
 	s.blockManagerWrap.WriteToFile(segmentHeader)
 	s.blockManagerWrap.FlushBuffer(false)
 }
@@ -391,7 +393,7 @@ func (wal *WriteAheadLog) GetWalElement() (*Entry, bool) {
 			}
 
 			if len(wal.segmentPaths)-1 >= found+1 {
-				wal.currentReadStatus.currentOffset = 0
+				wal.currentReadStatus.currentOffset = SEGMENT_HEADER_SIZE
 				wal.currentReadStatus.currentSegment = wal.segmentPaths[found+1]
 			} else {
 				wal.currentReadStatus.endReached = true
@@ -441,7 +443,7 @@ func (wal *WriteAheadLog) GetElementTypeAndSize(offset int) (RecordType, int) {
 			}
 
 			if len(wal.segmentPaths)-1 >= found+1 {
-				wal.currentReadStatus.currentOffset = 0
+				wal.currentReadStatus.currentOffset = SEGMENT_HEADER_SIZE
 				wal.currentReadStatus.currentSegment = wal.segmentPaths[found+1]
 			} else {
 				wal.currentReadStatus.endReached = true
@@ -511,7 +513,7 @@ func (wal *WriteAheadLog) SetStatus(filePath string, offset int) {
 		blockManagerWrapPervious := NewBlockManagerWrap(previousSegmentPath.segmentPath.segmentPath, wal.blockManager)
 		blockManagerWrapPervious.SetCurrentPosition(SEGMENT_HEADER_SIZE - SEGMENT_OFFSET)
 		offsetBytesPrevious := make([]byte, 4)
-		binary.LittleEndian.PutUint32(offsetBytesPrevious, uint32(8001))
+		binary.LittleEndian.PutUint32(offsetBytesPrevious, uint32(SEGMENT_SIZE+1))
 		blockManagerWrapPervious.OverwriteDataInFile(offsetBytesPrevious)
 	}
 }
