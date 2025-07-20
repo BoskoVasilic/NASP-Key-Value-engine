@@ -1,0 +1,29 @@
+{
+  "wal": {
+    "segmentMaxBlocks": 10
+  },
+  "memtable": {
+    "structureType": "skiplist",
+    "instanceCount": 5
+  },
+  "sstable": {
+    "summarySampling": 5,
+    "separateFiles": true,
+    "compressionEnabled": true
+  },
+  "lsm-tree": {
+    "algorithmType": "leveled",
+    "paramNumber": 3
+  },
+  "cache": {
+    "maxEntries": 10000         
+  },
+  "blockManager": {
+    "blockSizeKB": 8,            
+    "cacheMaxBlocks": 1024       
+  },
+  "tokenBucketRateLimit": {
+    "tokens": 10,
+    "resetIntervalMs": 16
+  }
+}
