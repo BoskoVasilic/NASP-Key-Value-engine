@@ -2,6 +2,7 @@ package structures
 
 import (
 	"encoding/binary"
+	"fmt"
 	"math"
 )
 
@@ -39,6 +40,10 @@ func (bmw *BlockManagerWrap) GetCurrentPosition() int {
 
 func (bmw *BlockManagerWrap) GetFileEnd() int {
 	return bmw.fileEnd
+}
+
+func (bmw *BlockManagerWrap) GetWritePosition() int {
+	return bmw.writePosition
 }
 
 func (bmw *BlockManagerWrap) setAvilableSpace(isAvailable bool) {
@@ -136,6 +141,7 @@ func (bmw *BlockManagerWrap) WriteToFile(data []byte) (int, error) {
 				bmw.fileEnd += BLOCK_SIZE
 			}
 		}
+		fmt.Println("Data written to file:", string(data))
 	} else if len(data) == availableBlockSpace {
 		var newBlock []byte
 		allBlocksToWrite := make([]byte, 0)
