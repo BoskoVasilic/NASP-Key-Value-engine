@@ -20,13 +20,14 @@ func NewCache[K comparable, V any](maCashSize int) *Cache[K, V] {
 		maxSize: maCashSize,
 		dll:     auxiliary.NewDLList[CacheEntry[K, V]](),
 		hm:      make(map[K]*auxiliary.Node[CacheEntry[K, V]]),
-	  }
+	}
 }
 
 func (c *Cache[K, V]) Put(key K, value V) {
 	node, ok := c.hm[key]
 	if ok {
 		c.dll.MoveToFront(node)
+		node.Value.value = value
 		return
 	}
 	entry := &CacheEntry[K, V]{key: key, value: value}
@@ -51,4 +52,12 @@ func (c *Cache[K, V]) Get(key K) (V, bool) {
 	}
 	c.dll.MoveToFront(node)
 	return node.Value.value, true
+}
+
+func (c *Cache[K, V]) Delete(key K) {
+	node, ok := c.hm[key]
+	if ok {
+		delete(c.hm, node.Value.key)
+		c.dll.Delete(node)
+	}
 }
