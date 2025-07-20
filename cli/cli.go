@@ -42,7 +42,7 @@ type Iterator interface {
 }
 
 // Ovaj deo ti kasnije zamenjuješ stvarnim engine-om
-var engine Engine = nil
+// var engine Engine = nil
 
 func Run() {
 	fmt.Println("Welcome to our Key-Value Engine CLI!")
@@ -131,24 +131,24 @@ func Run() {
 			// iterator := engine.RangeIterate(parts[1], parts[2])
 			// fmt.Println("Iterator created. Use NEXT and STOP commands.")
 
-		case "NEXT":
-			fmt.Println("[NEXT] fetch next from iterator")
-			// if iterator == nil {
-			// 	fmt.Println("No active iterator. Use PREFIX_ITERATE or RANGE_ITERATE first.")
-			// 	continue	
-			// }
-			// key, value, ok := iterator.Next()
-		case "STOP":
-			fmt.Println("[STOP] stop current iterator")
-			// if iterator == nil {
-			// 	fmt.Println("No active iterator to stop.")
-			// 	continue
-			// }
-			// err := iterator.Stop()
+		// case "NEXT":
+		// 	fmt.Println("[NEXT] fetch next from iterator")
+		// 	// if iterator == nil {
+		// 	// 	fmt.Println("No active iterator. Use PREFIX_ITERATE or RANGE_ITERATE first.")
+		// 	// 	continue	
+		// 	// }
+		// 	// key, value, ok := iterator.Next()
+		// case "STOP":
+		// 	fmt.Println("[STOP] stop current iterator")
+		// 	// if iterator == nil {
+		// 	// 	fmt.Println("No active iterator to stop.")
+		// 	// 	continue
+		// 	// }
+		// 	// err := iterator.Stop()
 
-			// if err != nil {
-			// 	fmt.Println("Error stopping iterator:", err)
-			// }
+		// 	// if err != nil {
+		// 	// 	fmt.Println("Error stopping iterator:", err)
+		// 	// }
 
 		// Probabilistic structures
 

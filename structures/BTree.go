@@ -7,14 +7,20 @@ import (
 	utils "KVengine/utils"
 )
 
-// BTreeNode holds sorted entries.
+// TODO: Check if updating something in PUT also updates the size and height, it should not do so,
+// Also, allow deleting something that is not in the tree, it should add that new entry with a tombstone flag
+
+// BTreeNode holds sorted entries
 type BTreeNode struct {
 	Entries  []Entry
 	Children []*BTreeNode
 	Parent   *BTreeNode
 }
-
-// BTree represents the B-Tree.
+// Entry represents a key-value pair with a tombstone flag
+// Root is a node with no parent, 
+// size is the number of entries, 
+// height is the tree height, 
+// order is the maximum number of entries per node 
 type BTree struct {
 	Root   *BTreeNode
 	Size   uint32
@@ -22,12 +28,12 @@ type BTree struct {
 	Order  uint8
 }
 
-// NewBTree creates a B-Tree of given order.
+// Initialize a new BTree with a given order
 func NewBTree(order uint8) *BTree {
 	return &BTree{Order: order}
 }
 
-// Put inserts or updates a key–value pair.
+// Put inserts or updates a key–value pair
 func (b *BTree) Put(key string, value []byte, tombstone bool) {
 	if b.Root == nil {
 		b.Root = &BTreeNode{
@@ -40,7 +46,7 @@ func (b *BTree) Put(key string, value []byte, tombstone bool) {
 	}
 }
 
-// Get returns the value for a key.
+// Get returns the value for a key
 func (b *BTree) Get(key string) ([]byte, bool) {
 	node := b.Root
 	for node != nil {
@@ -68,38 +74,47 @@ func (b *BTree) Get(key string) ([]byte, bool) {
 	return nil, false
 }
 
-// Delete marks a key as logically deleted.
+// Delete marks a key (an entry) as logically deleted
 func (b *BTree) Delete(key string) {
 	if b.Root == nil {
+		// tree empty, just add a tombstone
+		b.Root = &BTreeNode{
+			Entries: []Entry{{key: key, value: nil, deleted: true}},
+		}
+		b.Height = 1
+		b.Size++
 		return
 	}
-	markEntrydeleted(b.Root, key)
+	if !markEntrydeleted(b.Root, key) {
+		// not found, insert a new tombstone entry
+		b.Put(key, nil, true)
+	}
 }
 
-func markEntrydeleted(node *BTreeNode, key string) {
+func markEntrydeleted(node *BTreeNode, key string) bool {
 	for {
 		for i, e := range node.Entries {
 			if key == e.key {
 				node.Entries[i].deleted = true
-				return
+				return true
 			} else if key < e.key {
 				if len(node.Children) > 0 {
 					node = node.Children[i]
 					goto NEXT
 				}
-				return
+				return false
 			}
 		}
 		if len(node.Children) > 0 {
 			node = node.Children[len(node.Children)-1]
 		} else {
-			return
+			return false
 		}
 	NEXT:
 	}
 }
 
-// ---------------- internal helpers -------------------
+// helper functions
 
 func insertEntry(b *BTree, node *BTreeNode, entry Entry) {
 	// Leaf
@@ -111,10 +126,10 @@ func insertEntry(b *BTree, node *BTreeNode, entry Entry) {
 			return
 		}
 		node.Entries = insertEntryAt(node.Entries, idx, entry)
+		b.Size++
 		if len(node.Entries) >= int(b.Order) {
 			splitNode(b, node)
 		}
-		b.Size++
 		return
 	}
 	// Internal
@@ -258,7 +273,7 @@ func nextBTreeEntry(tree *BTree, state *btreeIterState) (Entry, bool) {
     return zero, false
 }
 
-// ---------------- serialization ----------------
+// serilization function
 
 func (b *BTree) Serialize() []byte {
     buf := make([]byte, 0)
@@ -279,8 +294,7 @@ func (b *BTree) Serialize() []byte {
 
     return buf
 }
-// ---------------- debug ----------------
-
+// for debugging: prints the BTree
 func PrintTree(node *BTreeNode, level int) {
 	if node == nil {
 		return
@@ -291,7 +305,7 @@ func PrintTree(node *BTreeNode, level int) {
 	}
 }
 
-// ---------------- minimal test ----------------
+// test function for BTree
 /*
 func TestBTree() {
 	fmt.Println("\nBTree test with key–value pairs and tombstones:")
