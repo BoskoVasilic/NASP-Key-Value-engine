@@ -16,11 +16,12 @@ type BTreeNode struct {
 	Children []*BTreeNode
 	Parent   *BTreeNode
 }
+
 // Entry represents a key-value pair with a tombstone flag
-// Root is a node with no parent, 
-// size is the number of entries, 
-// height is the tree height, 
-// order is the maximum number of entries per node 
+// Root is a node with no parent,
+// size is the number of entries,
+// height is the tree height,
+// order is the maximum number of entries per node
 type BTree struct {
 	Root   *BTreeNode
 	Size   uint32
@@ -213,87 +214,90 @@ func replaceChild(children []*BTreeNode, old, left, right *BTreeNode) []*BTreeNo
 	return newChildren
 }
 
-
-
 // GetIter returns an iterator over the BTree entries in sorted (in‑order) order.
 // It uses an explicit stack (slice) for traversal and returns Entry values directly.
 func (b *BTree) GetIter() *utils.Iterator[BTree, btreeIterState, Entry] {
-    state := btreeIterState{
-        nodeStack:  []*BTreeNode{},
-        indexStack: []int{},
-        current:    b.Root,
-    }
-    return utils.NewIterator(b, &state, nextBTreeEntry)
+	state := btreeIterState{
+		nodeStack:  []*BTreeNode{},
+		indexStack: []int{},
+		current:    b.Root,
+	}
+	return utils.NewIterator(b, &state, nextBTreeEntry)
+}
+
+func (b *BTree) GetSize() int {
+	return int(b.Size)
 }
 
 // internal state for iteration
 type btreeIterState struct {
-    nodeStack  []*BTreeNode
-    indexStack []int
-    current    *BTreeNode
+	nodeStack  []*BTreeNode
+	indexStack []int
+	current    *BTreeNode
 }
 
 // nextBTreeEntry performs one step of in‑order traversal using state
 func nextBTreeEntry(tree *BTree, state *btreeIterState) (Entry, bool) {
-    var zero Entry
+	var zero Entry
 
-    // Push leftmost path of current node
-    for state.current != nil {
-        state.nodeStack = append(state.nodeStack, state.current)
-        state.indexStack = append(state.indexStack, 0)
-        if len(state.current.Children) > 0 {
-            state.current = state.current.Children[0]
-        } else {
-            state.current = nil
-        }
-    }
+	// Push leftmost path of current node
+	for state.current != nil {
+		state.nodeStack = append(state.nodeStack, state.current)
+		state.indexStack = append(state.indexStack, 0)
+		if len(state.current.Children) > 0 {
+			state.current = state.current.Children[0]
+		} else {
+			state.current = nil
+		}
+	}
 
-    for len(state.nodeStack) > 0 {
-        // Look at top of stack
-        n := state.nodeStack[len(state.nodeStack)-1]
-        i := state.indexStack[len(state.indexStack)-1]
+	for len(state.nodeStack) > 0 {
+		// Look at top of stack
+		n := state.nodeStack[len(state.nodeStack)-1]
+		i := state.indexStack[len(state.indexStack)-1]
 
-        if i < len(n.Entries) {
-            // Update index for next time
-            state.indexStack[len(state.indexStack)-1]++
+		if i < len(n.Entries) {
+			// Update index for next time
+			state.indexStack[len(state.indexStack)-1]++
 
-            // If there’s a right child after this entry, set current to it
-            if len(n.Children) > i+1 {
-                state.current = n.Children[i+1]
-            }
+			// If there’s a right child after this entry, set current to it
+			if len(n.Children) > i+1 {
+				state.current = n.Children[i+1]
+			}
 
-            return n.Entries[i], true
-        } else {
-            // Pop finished node
-            state.nodeStack = state.nodeStack[:len(state.nodeStack)-1]
-            state.indexStack = state.indexStack[:len(state.indexStack)-1]
-        }
-    }
+			return n.Entries[i], true
+		} else {
+			// Pop finished node
+			state.nodeStack = state.nodeStack[:len(state.nodeStack)-1]
+			state.indexStack = state.indexStack[:len(state.indexStack)-1]
+		}
+	}
 
-    return zero, false
+	return zero, false
 }
 
 // serilization function
 
 func (b *BTree) Serialize() []byte {
-    buf := make([]byte, 0)
+	buf := make([]byte, 0)
 
-    // prepend size
-    sizeBytes := utils.Uint32ToBytes(b.Size)
-    buf = append(buf, sizeBytes...)
+	// prepend size
+	sizeBytes := utils.Uint32ToBytes(b.Size)
+	buf = append(buf, sizeBytes...)
 
-    // use iterator to walk entries in sorted order
-    iter := b.GetIter()
-    for {
-        entry, ok := iter.Next()
-        if !ok {
-            break
-        }
-        buf = append(buf, entry.toBytes()...)
-    }
+	// use iterator to walk entries in sorted order
+	iter := b.GetIter()
+	for {
+		entry, ok := iter.Next()
+		if !ok {
+			break
+		}
+		buf = append(buf, entry.toBytes()...)
+	}
 
-    return buf
+	return buf
 }
+
 // for debugging: prints the BTree
 func PrintTree(node *BTreeNode, level int) {
 	if node == nil {

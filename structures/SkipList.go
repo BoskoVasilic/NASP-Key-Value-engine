@@ -15,6 +15,7 @@ type Node struct {
 type SkipList struct {
 	currentHeight int
 	head          *Node
+	size          int
 }
 
 func (s *SkipList) GetHeight() int {
@@ -121,6 +122,10 @@ func (s *SkipList) insert(key string, value []byte, tombstone bool) error {
 		}
 		s.head = headNode
 	}
+
+	if err != nil {
+		s.size++
+	}
 	return err
 }
 func (s *SkipList) getEntry(key string) (Entry, bool, error) {
@@ -203,4 +208,8 @@ func (s *SkipList) RangeScan(first, last string) *utils.Iterator[string, *Node, 
 		*current = (*current).next
 		return data, true
 	})
+}
+
+func (s *SkipList) GetSize() int {
+	return s.size
 }
