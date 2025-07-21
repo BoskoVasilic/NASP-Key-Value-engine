@@ -2,7 +2,6 @@ package structures
 
 import (
 	"encoding/binary"
-	"fmt"
 	"io"
 	"log"
 	"math"
@@ -274,10 +273,7 @@ func (bm *BlockManager) GetEndOfFile(filePath string) int {
 		log.Fatal(err)
 	}
 
-	fmt.Println("File size:", info.Size())
-
 	if info.Size() == 0 {
-		fmt.Println("File is empty, returning 0 as end of file")
 		return -1
 	}
 

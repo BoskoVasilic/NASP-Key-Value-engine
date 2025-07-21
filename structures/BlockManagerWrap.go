@@ -2,7 +2,6 @@ package structures
 
 import (
 	"encoding/binary"
-	"fmt"
 	"math"
 )
 
@@ -141,7 +140,6 @@ func (bmw *BlockManagerWrap) WriteToFile(data []byte) (int, error) {
 				bmw.fileEnd += BLOCK_SIZE
 			}
 		}
-		fmt.Println("Data written to file:", string(data))
 	} else if len(data) == availableBlockSpace {
 		var newBlock []byte
 		allBlocksToWrite := make([]byte, 0)
