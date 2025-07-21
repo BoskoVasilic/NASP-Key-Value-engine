@@ -1,10 +1,11 @@
 package structures
 
 type Memtables struct {
-	n           int
-	maxEntry    int
-	tables      []Storage
-	activeIndex int
+	n            int
+	maxEntry     int
+	tables       []Storage
+	activeIndex  int
+	doneChannels []chan struct{}
 }
 
 func NewMemtables(n int, maxEntry int) *Memtables {
@@ -13,6 +14,7 @@ func NewMemtables(n int, maxEntry int) *Memtables {
 		maxEntry,
 		make([]Storage, n),
 		0,
+		make([]chan struct{}, n),
 	}
 }
 
@@ -43,9 +45,16 @@ func (mt *Memtables) Delete(key string) {
 
 func (mt *Memtables) checkFullness() {
 	if mt.getActive().GetSize() == mt.maxEntry {
-		mt.activeIndex++
-		if mt.activeIndex == mt.n {
-			// TODO flush
-		}
+		newIndex := (mt.activeIndex + 1) % mt.n
+		<-mt.doneChannels[newIndex]
+		mt.doneChannels[mt.activeIndex] = make(chan struct{})
+		go mt.flush(mt.activeIndex)
+		mt.activeIndex = newIndex
 	}
+}
+
+func (mt *Memtables) flush(index int) {
+	// ssTabel := NewSSTable(mt.tables[index].GetIter(), mt.maxEntry)
+	// TODO call SSTabel
+	close(mt.doneChannels[index])
 }
