@@ -101,6 +101,8 @@ func (mt *Memtables) flush(index int) {
 	isCompressed := globalConfig.SSTable.CompressionEnabled
 	isOneFile := !globalConfig.SSTable.SeparateFiles
 	summary := globalConfig.SSTable.SummarySampling
+	mergeAlg := globalConfig.LSMTree.AlgorithmType
+	mergeSize := globalConfig.LSMTree.ParamNumber
 
 	var path string
 	if typeInt == 1 {
@@ -121,6 +123,6 @@ func (mt *Memtables) flush(index int) {
 
 	lsm := NewLSMTree(mt.maxEntry, &globalBM)
 	lsm.AddLevel(path)
-	lsm.StartMerging(0, &globalD, true, 5, 10)
+	lsm.StartMerging(mergeAlg, &globalD, isOneFile, uint64(summary), mergeSize)
 
 }
