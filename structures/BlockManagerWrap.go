@@ -152,6 +152,7 @@ func (bmw *BlockManagerWrap) WriteToFile(data []byte) (int, error) {
 		if err != nil {
 			return 0, err
 		}
+    
 		if bmw.isSpaceAvailable {
 			bmw.fileEnd += BLOCK_SIZE
 		}

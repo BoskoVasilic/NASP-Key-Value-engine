@@ -6,8 +6,9 @@ import (
 )
 
 type HashMap struct {
-	buckets [][]Entry
-	size    int
+	buckets   [][]Entry
+	size      int
+	entrySize int
 }
 
 func NewHashMap(size int) *HashMap {
@@ -35,6 +36,7 @@ func (h *HashMap) insert(key string, value []byte, deleted bool) {
 		}
 	}
 	h.buckets[index] = append(h.buckets[index], *NewEntry(key, value, deleted))
+	h.entrySize++
 }
 
 func (h *HashMap) Put(key string, value []byte) {
@@ -105,7 +107,7 @@ func (h *HashMap) ToBytes() []byte {
 	return buf
 }
 
-func (h *HashMap) GetIter() *utils.Iterator[[]*Entry, int, *Entry] {
+func (h *HashMap) GetIter() any {
 
 	entries := make([]*Entry, 0)
 
@@ -130,6 +132,10 @@ func (h *HashMap) GetIter() *utils.Iterator[[]*Entry, int, *Entry] {
 
 	})
 
+}
+
+func (h *HashMap) GetSize() int {
+	return h.entrySize
 }
 
 func DeserializeHM(data []byte) *HashMap {
@@ -159,4 +165,13 @@ func DeserializeHM(data []byte) *HashMap {
 	}
 
 	return h
+}
+
+func (h *HashMap) GetTypeInt() int {
+	return 3 // HashMap is represented by 3
+
+}
+
+func (h *HashMap) GetNew() Storage {
+	return NewHashMap(h.size)
 }

@@ -1,5 +1,6 @@
 package main
 
+import "KVengine/cli"
 
 
 func main() {
@@ -21,18 +22,5 @@ func main() {
 	//fmt.Println(filter2.Check([]byte("World")))
 	//fmt.Println(filter2.Check([]byte("Hello, World!")))
 	//fmt.Println(data2)
-
-	element := structures.NewWriteAheadLogElement(5, 5, []byte("Hello"), []byte("World"))
-	fmt.Println(element.Serialize())
-	element2 := structures.NewWriteAheadLogElement(7, 8, []byte("Hello00"), []byte("World112"))
-	fmt.Println(element2.Serialize())
-	elementSer := element.Serialize()
-	fmt.Println(structures.Deserialize(elementSer))
-	log := structures.NewWriteAheadLog()
-	fmt.Println(log)
-	log.AddElement(element)
-	log.AddElement(element2)
-	fmt.Println(log)
-	log.ReadFromFile()
-	fmt.Println(log)
 }
+
