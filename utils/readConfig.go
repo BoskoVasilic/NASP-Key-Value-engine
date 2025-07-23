@@ -35,6 +35,7 @@ type CacheConfig struct {
 type LSMTreeConfig struct {
 	AlgorithmType int `json:"algorithmType"`
 	ParamNumber   int    `json:"paramNumber"`
+	MaxLevel      int    `json:"maxLevel"` // New field for max level
 }
 
 type TokenBucketConfig struct {
@@ -90,14 +91,21 @@ var defaultConfig = Config{
 // Read user config from config file
 // If any validation fails, it will use the default config and return an error
 // Therefore it will always return a valid config just may not be the user-provided one
-func ReadConfig(filePath string) (*Config, error) {
+func ReadConfig(filePath string) (*Config) {
 	file, err := os.Open(filePath)
 	if err != nil {
-		return &defaultConfig, fmt.Errorf("error opening config file, using default: %v", err)
+		fmt.Println("Error opening config file, using default config:", err)
+		return &defaultConfig
 	}
 	defer file.Close()
 
 	var userConfig Config
+
+	decoder := json.NewDecoder(file)
+	if err := decoder.Decode(&userConfig); err != nil {
+		fmt.Println("Error decoding config file, using default config:", err)
+		return &defaultConfig
+	}
 
 	if userConfig.Memtable.StructureType == "skiplist" {
 		userConfig.Memtable.StructNum = 2 
@@ -109,10 +117,6 @@ func ReadConfig(filePath string) (*Config, error) {
 		userConfig.Memtable.StructNum = defaultConfig.Memtable.StructNum // Use default if invalid
 	}
 
-	decoder := json.NewDecoder(file)
-	if err := decoder.Decode(&userConfig); err != nil {
-		return &defaultConfig, fmt.Errorf("error decoding config file, using default: %v", err)
-	}
 
 	var errs []string
 
@@ -144,7 +148,7 @@ func ReadConfig(filePath string) (*Config, error) {
 	// no validation needed for bools: SeparateFiles and CompressionEnabled
 
 	// Validate Memtable
-	if userConfig.Memtable.StructureType != "skiplist" && userConfig.Memtable.StructureType != "hashmap" && userConfig.Memtable.StructureType != "bst" {
+	if userConfig.Memtable.StructureType != "skiplist" && userConfig.Memtable.StructureType != "hashmap" && userConfig.Memtable.StructureType != "btree" {
 		errs = append(errs, fmt.Sprintf("memtable.structureType invalid (%s), defaulting to %s",
 			userConfig.Memtable.StructureType, defaultConfig.Memtable.StructureType))
 		userConfig.Memtable.StructureType = defaultConfig.Memtable.StructureType
@@ -186,12 +190,9 @@ func ReadConfig(filePath string) (*Config, error) {
 		userConfig.TokenBucketRateLim.ResetIntervalMs = defaultConfig.TokenBucketRateLim.ResetIntervalMs
 	}
 
-	var finalErr error
-	if len(errs) > 0 {
-		finalErr = fmt.Errorf("config validation issues:\n%s", stringJoin(errs, "\n"))
-	}
+	fmt.Printf("Error(s) in config file:\n%s\n", stringJoin(errs, "\n"))
 
-	return &userConfig, finalErr
+	return &userConfig
 }
 
 // Helper join to print error messages for user

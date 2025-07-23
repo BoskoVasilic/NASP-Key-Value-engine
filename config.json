@@ -14,7 +14,8 @@
   },
   "lsm-tree": {
     "algorithmType": 1, 
-    "paramNumber": 3
+    "paramNumber": 3,
+    "maxLevel": 10
   },
   "cache": {
     "maxEntries": 10000         

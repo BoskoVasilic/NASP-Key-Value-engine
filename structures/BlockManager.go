@@ -8,8 +8,9 @@ import (
 	"os"
 )
 
+var BLOCK_SIZE = globalConfig.BlockManager.BlockSizeKB * 1000
+
 const (
-	BLOCK_SIZE        = 8000 // specify the block size in config file
 	BLOCK_HEADER_SIZE = 4
 )
 

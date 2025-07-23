@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"KVengine/structures"
 )
 
 // This is just a placeholder interface for the integration with the actual engine.
@@ -35,16 +36,43 @@ type Engine interface {
 	SimHashDistance(name1, name2 string) (int, error)
 }
 
+type KVEngine struct {
+    memtables structures.Memtables 
+	wal structures.WriteAheadLog
+	cache structures.Cache[string, []byte]
+}
+
+func (e *KVEngine) Put(key string, value []byte) error {
+	// memtable - sstable - wal
+	e.memtables.Put(key, value)
+	return nil
+}
+
+func (e *KVEngine) Get(key string) ([]byte, bool) {
+	return e.memtables.Get(key)
+}
+
+func (e *KVEngine) Delete(key string) error {
+	// memtable - sstable - wal
+	e.memtables.Delete(key)
+	return nil
+}
+
 // Iterator for PREFIX_ITERATE and RANGE_ITERATE
 type Iterator interface {
 	Next() (string, []byte, bool) // key, value, ok
 	Stop() error
 }
 
-// Ovaj deo ti kasnije zamenjuješ stvarnim engine-om
-// var engine Engine = nil
-
 func Run() {
+	
+	e := KVEngine{
+		memtables: structures.NewMemtables(),
+		wal: structures.NewWriteAheadLog("wal.bin"),
+		cache: structures.NewCache[string, []byte](10000), // Example cache size
+	}
+
+
 	fmt.Println("Welcome to our Key-Value Engine CLI!")
 	fmt.Println("Type HELP for a list of commands.")
 	reader := bufio.NewScanner(os.Stdin)
@@ -75,6 +103,8 @@ func Run() {
 			}
 			key, value := parts[1], strings.Join(parts[2:], " ")
 			fmt.Println("[PUT]", key, value)
+
+			e.Put(key, []byte(value))
 			
 
 		// GET command expects at least 1 part: key and then retrieves the value from the engine
@@ -85,7 +115,8 @@ func Run() {
 			}
 			key := parts[1]
 			fmt.Println("[GET]", key)
-			// val, _ := eng.Get(key); fmt.Println(string(val))
+			val, _ := e.Get(key)
+			fmt.Println(string(val))
 
 		// DELETE command expects at least 1 part: key and deletes it from the engine
 		case "DELETE":
@@ -95,7 +126,7 @@ func Run() {
 			}
 			key := parts[1]
 			fmt.Println("[DELETE]", key)
-			// engine.Delete(key)
+			// e.Delete(key)
 
 		// Scanners from 2.4
 		case "PREFIX_SCAN":
@@ -131,28 +162,6 @@ func Run() {
 			// iterator := engine.RangeIterate(parts[1], parts[2])
 			// fmt.Println("Iterator created. Use NEXT and STOP commands.")
 
-		// case "NEXT":
-		// 	fmt.Println("[NEXT] fetch next from iterator")
-		// 	// if iterator == nil {
-		// 	// 	fmt.Println("No active iterator. Use PREFIX_ITERATE or RANGE_ITERATE first.")
-		// 	// 	continue	
-		// 	// }
-		// 	// key, value, ok := iterator.Next()
-		// case "STOP":
-		// 	fmt.Println("[STOP] stop current iterator")
-		// 	// if iterator == nil {
-		// 	// 	fmt.Println("No active iterator to stop.")
-		// 	// 	continue
-		// 	// }
-		// 	// err := iterator.Stop()
-
-		// 	// if err != nil {
-		// 	// 	fmt.Println("Error stopping iterator:", err)
-		// 	// }
-
-		// Probabilistic structures
-
-		// possibly change the command names to be more consistent, change ADD to SAVE or INSERT
 
 		// BloomFilter
 		case "BF_CREATE":

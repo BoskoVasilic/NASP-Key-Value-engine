@@ -4,6 +4,7 @@ package structures
 
 import "KVengine/utils"
 
-var globalBM BlockManager
+var globalBM *BlockManager
 var globalD GlobalDictionary
 var globalConfig *utils.Config
+var globalCache Cache[string, []byte]
