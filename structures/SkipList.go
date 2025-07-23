@@ -74,7 +74,7 @@ func (s *SkipList) findPath(key string) (bool, []*Node, error) {
 
 	return true, path, nil
 }
-func (s *SkipList) Put(key string, value []byte)  {
+func (s *SkipList) Put(key string, value []byte) {
 	s.insert(key, value, false)
 }
 func (s *SkipList) insert(key string, value []byte, tombstone bool) error {
@@ -133,9 +133,6 @@ func (s *SkipList) getEntry(key string) (Entry, bool, error) {
 	fmt.Println("found:", found, "path:", path, len(path), "currentHeight:",
 		path[s.currentHeight].data.value, "deleted:", path[s.currentHeight].data.deleted)
 	if found {
-		if path[s.currentHeight].data.deleted {
-			return zero, false, err
-		}
 		return *path[s.currentHeight].data, true, err
 	}
 	return zero, false, err
@@ -170,7 +167,7 @@ func (s *SkipList) delete(key string) error {
 	return err
 }
 
-func (s *SkipList) Delete(key string)  {
+func (s *SkipList) Delete(key string) {
 	err := s.delete(key)
 	if err != nil {
 		panic(err)
@@ -225,7 +222,6 @@ func (s *SkipList) GetSize() int {
 func (s *SkipList) GetTypeInt() int {
 	return 2 // SkipList is represented by 2
 }
-
 
 func (s *SkipList) GetNew() Storage {
 	return NewSkipList()

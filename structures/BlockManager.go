@@ -8,7 +8,7 @@ import (
 	"os"
 )
 
-var BLOCK_SIZE = GlobalConfig.BlockManager.BlockSizeKB * 1000
+var BLOCK_SIZE int
 
 const (
 	BLOCK_HEADER_SIZE = 4
@@ -28,6 +28,7 @@ type BlockManager struct {
 }
 
 func NewBlockManager(cacheSize int) *BlockManager {
+	BLOCK_SIZE = GlobalConfig.BlockManager.BlockSizeKB * 1000
 	return &BlockManager{
 		cache: NewBlockCache(cacheSize),
 	}
