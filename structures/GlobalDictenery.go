@@ -22,7 +22,9 @@ func NewGlobalDictionary(filePath string, blocMenager *BlockManager) *GlobalDict
 }
 func (g GlobalDictionary) Flush() {
 	// Flush the file buffer to ensure all data is written to disk
+	DicLock.Lock()
 	g.file.FlushBuffer(false)
+	DicLock.Unlock()
 }
 func AddItems[T any, H any](globalDictionary *GlobalDictionary, itterator *utils.Iterator[T, H, *Entry]) (*utils.Iterator[[]*ExportEntry, int, *ExportEntry], string, string) {
 	// Treba da postoji flush opcija
@@ -40,7 +42,9 @@ func AddItems[T any, H any](globalDictionary *GlobalDictionary, itterator *utils
 		}
 		lastKey = entry.key
 		var newKey uint64
+		DicLock.RLock()
 		returnData, _ := globalDictionary.SkipList.Get(entry.key)
+		DicLock.RUnlock()
 		if returnData.key != entry.key {
 			newKey = globalDictionary.AddItem(entry)
 		} else {
@@ -71,7 +75,9 @@ func AddItemsWithNoCompresion[T any, H any](globalDictionary *GlobalDictionary, 
 			firsKey = entry.key
 		}
 		lastKey = entry.key
+		DicLock.RLock()
 		returnData, _ := globalDictionary.SkipList.Get(entry.key)
+		DicLock.RUnlock()
 		if returnData.key != entry.key {
 			globalDictionary.AddItem(entry)
 		}
@@ -84,18 +90,22 @@ func AddItemsWithNoCompresion[T any, H any](globalDictionary *GlobalDictionary, 
 }
 
 func AddItmsString(globalDictionary *GlobalDictionary, key string) {
+
 	defer globalDictionary.Flush()
 	entry := &Entry{
 		key:   key,
 		value: utils.Uint64ToBytes(globalDictionary.Size),
 	}
+	DicLock.RLock()
 	returnData, _ := globalDictionary.SkipList.Get(entry.key)
+	DicLock.RUnlock()
 	if returnData.key != entry.key {
 		globalDictionary.AddItem(entry)
 	}
 
 }
 func (GlobalDictionary *GlobalDictionary) AddItem(entry *Entry) uint64 {
+	DicLock.Lock()
 	buffer := make([]byte, 0)
 	GlobalDictionary.SkipList.Put(entry.key, utils.Uint64ToBytes(GlobalDictionary.Size))
 	buffer = append(buffer, utils.Uint64ToBytes(uint64(len(entry.key)))...)
@@ -105,10 +115,13 @@ func (GlobalDictionary *GlobalDictionary) AddItem(entry *Entry) uint64 {
 	befor := GlobalDictionary.Size
 	GlobalDictionary.Size = GlobalDictionary.Size + 1
 	//fmt.Println("Added item with key:", befor, "to the global dictionary. New size is:", GlobalDictionary.Size)
+	DicLock.Unlock()
 	return befor
 }
 func (GlobalDictionary *GlobalDictionary) GetItem(key string) (Entry, bool) {
+	DicLock.RLock()
 	value, found := GlobalDictionary.SkipList.Get(key)
+	DicLock.RUnlock()
 	if !found {
 		return Entry{}, false
 	}
@@ -129,7 +142,9 @@ func (GlobalDictionary *GlobalDictionary) ConvertListToExportEntry(list *auxilia
 		if !ok {
 			break
 		}
+		DicLock.RLock()
 		newKeyBytes, found := GlobalDictionary.SkipList.Get(entry.key)
+		DicLock.RUnlock()
 		if !found {
 			// If the key is not found in the SkipList, we can skip this entry
 			continue
