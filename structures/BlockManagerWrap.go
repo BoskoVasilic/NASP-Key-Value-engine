@@ -15,6 +15,7 @@ type BlockManagerWrap struct {
 	writeBuffer            []byte
 	currentBufferUsedSpace int
 	isBufferFlushed        bool
+	isSpaceAvailable       bool
 }
 
 func NewBlockManagerWrap(filePath string, blockManager *BlockManager) *BlockManagerWrap {
@@ -28,6 +29,7 @@ func NewBlockManagerWrap(filePath string, blockManager *BlockManager) *BlockMana
 		currentBufferUsedSpace: 0,
 		fileEnd:                blockManager.GetEndOfFile(filePath) + BLOCK_SIZE,
 		isBufferFlushed:        false,
+		isSpaceAvailable:       true,
 	}
 }
 
@@ -37,6 +39,14 @@ func (bmw *BlockManagerWrap) GetCurrentPosition() int {
 
 func (bmw *BlockManagerWrap) GetFileEnd() int {
 	return bmw.fileEnd
+}
+
+func (bmw *BlockManagerWrap) GetWritePosition() int {
+	return bmw.writePosition
+}
+
+func (bmw *BlockManagerWrap) setAvilableSpace(isAvailable bool) {
+	bmw.isSpaceAvailable = isAvailable
 }
 
 func (bmw *BlockManagerWrap) ReadFromFile(offset int, bytesNeeded int) (int, []byte) {
@@ -113,30 +123,39 @@ func (bmw *BlockManagerWrap) WriteToFile(data []byte) (int, error) {
 		bmw.isBufferFlushed = true
 		if len(newBlock) > 0 {
 			allBlocksToWrite = append(allBlocksToWrite, bmw.writeBuffer...)
-			allBlocksToWrite = append(allBlocksToWrite, newBlock...)
+			if bmw.isSpaceAvailable {
+				allBlocksToWrite = append(allBlocksToWrite, newBlock...)
+			}
 			err := bmw.blockManager.WriteToDisk(bmw.filePath, bmw.writePosition/BLOCK_SIZE, allBlocksToWrite)
 			if err != nil {
 				return 0, err
 			}
-			bmw.fileEnd += BLOCK_SIZE
 			bmw.writePosition += BLOCK_SIZE
 			bmw.writeBuffer = bmw.writeBuffer[:0]
 			bmw.writeBuffer = newBlock
 			bmw.currentBufferUsedSpace = 0
-			bmw.isBufferFlushed = true
 			bmw.currentPosition = bmw.writePosition
+			bmw.isBufferFlushed = true
+			if bmw.isSpaceAvailable {
+				bmw.fileEnd += BLOCK_SIZE
+			}
 		}
 	} else if len(data) == availableBlockSpace {
 		var newBlock []byte
 		allBlocksToWrite := make([]byte, 0)
 		bmw.writeBuffer, newBlock = bmw.blockManager.AddDataWithEqualSizeToBlock(bmw.currentBufferUsedSpace, data, bmw.writeBuffer)
 		allBlocksToWrite = append(allBlocksToWrite, bmw.writeBuffer...)
-		allBlocksToWrite = append(allBlocksToWrite, newBlock...)
+		if bmw.isSpaceAvailable {
+			allBlocksToWrite = append(allBlocksToWrite, newBlock...)
+		}
 		err := bmw.blockManager.WriteToDisk(bmw.filePath, bmw.writePosition/BLOCK_SIZE, allBlocksToWrite)
 		if err != nil {
 			return 0, err
 		}
-		bmw.fileEnd += BLOCK_SIZE
+    
+		if bmw.isSpaceAvailable {
+			bmw.fileEnd += BLOCK_SIZE
+		}
 		bmw.writePosition += BLOCK_SIZE
 		bmw.writeBuffer = bmw.writeBuffer[:0]
 		bmw.writeBuffer = newBlock

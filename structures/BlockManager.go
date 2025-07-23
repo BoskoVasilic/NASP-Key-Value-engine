@@ -2,7 +2,6 @@ package structures
 
 import (
 	"encoding/binary"
-	"fmt"
 	"io"
 	"log"
 	"math"
@@ -173,10 +172,18 @@ func (bm *BlockManager) AddDataWithBiggerSizeToBlock(currentLength int, remainin
 	} else {
 		copy(newBlock, data)
 		newLength := len(data)
-		binary.LittleEndian.PutUint32(newBlock[BLOCK_SIZE-BLOCK_HEADER_SIZE:], uint32(newLength))
-		allBlocksToWrite = append(allBlocksToWrite, newBlock...)
+		if len(data) > BLOCK_SIZE-BLOCK_HEADER_SIZE {
+			additionalBlock = make([]byte, BLOCK_SIZE)
+			binary.LittleEndian.PutUint32(additionalBlock[BLOCK_SIZE-BLOCK_HEADER_SIZE:], uint32(0))
+			allBlocksToWrite = append(allBlocksToWrite, newBlock...)
+			allBlocksToWrite = append(allBlocksToWrite, additionalBlock...)
+			lastBlock = additionalBlock
+		} else {
+			binary.LittleEndian.PutUint32(newBlock[BLOCK_SIZE-BLOCK_HEADER_SIZE:], uint32(newLength))
+			allBlocksToWrite = append(allBlocksToWrite, newBlock...)
+			lastBlock = newBlock
+		}
 		block = allBlocksToWrite
-		lastBlock = newBlock
 	}
 	return block, lastBlock
 }
@@ -274,10 +281,7 @@ func (bm *BlockManager) GetEndOfFile(filePath string) int {
 		log.Fatal(err)
 	}
 
-	fmt.Println("File size:", info.Size())
-
 	if info.Size() == 0 {
-		fmt.Println("File is empty, returning 0 as end of file")
 		return -1
 	}
 
