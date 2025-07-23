@@ -7,6 +7,11 @@ import (
 	"sync"
 )
 
+const (
+	GlobalDictionaryFile = "./data/dictionary"
+	GlobalLSMTreeFile    = "./data/tree_data"
+)
+
 var GlobalBM *BlockManager
 var GlobalD *GlobalDictionary
 var GlobalConfig *utils.Config

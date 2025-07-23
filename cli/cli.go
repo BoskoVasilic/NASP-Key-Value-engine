@@ -36,28 +36,6 @@ type Engine interface {
 	SimHashDistance(name1, name2 string) (int, error)
 }
 
-type KVEngine struct {
-    memtables structures.Memtables 
-	wal structures.WriteAheadLog
-	cache structures.Cache[string, []byte]
-}
-
-func (e *KVEngine) Put(key string, value []byte) error {
-	// memtable - sstable - wal
-	e.memtables.Put(key, value)
-	return nil
-}
-
-func (e *KVEngine) Get(key string) ([]byte, bool) {
-	return e.memtables.Get(key)
-}
-
-func (e *KVEngine) Delete(key string) error {
-	// memtable - sstable - wal
-	e.memtables.Delete(key)
-	return nil
-}
-
 // Iterator for PREFIX_ITERATE and RANGE_ITERATE
 type Iterator interface {
 	Next() (string, []byte, bool) // key, value, ok
@@ -66,13 +44,9 @@ type Iterator interface {
 
 func Run() {
 	
-	e := KVEngine{
-		memtables: structures.NewMemtables(),
-		wal: structures.NewWriteAheadLog("wal.bin"),
-		cache: structures.NewCache[string, []byte](10000), // Example cache size
-	}
+	memtables := structures.NewMemtables(structures.GlobalConfig.Memtable.StructNum, structures.GlobalConfig.Memtable.InstanceCount)
 
-
+	// Initialize the global engine
 	fmt.Println("Welcome to our Key-Value Engine CLI!")
 	fmt.Println("Type HELP for a list of commands.")
 	reader := bufio.NewScanner(os.Stdin)
@@ -104,7 +78,7 @@ func Run() {
 			key, value := parts[1], strings.Join(parts[2:], " ")
 			fmt.Println("[PUT]", key, value)
 
-			e.Put(key, []byte(value))
+			memtables.Put(key, []byte(value))
 			
 
 		// GET command expects at least 1 part: key and then retrieves the value from the engine
@@ -115,7 +89,7 @@ func Run() {
 			}
 			key := parts[1]
 			fmt.Println("[GET]", key)
-			val, _ := e.Get(key)
+			val, _ := memtables.Get(key)
 			fmt.Println(string(val))
 
 		// DELETE command expects at least 1 part: key and deletes it from the engine

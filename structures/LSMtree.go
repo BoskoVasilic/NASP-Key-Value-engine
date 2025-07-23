@@ -564,7 +564,13 @@ func (lt *LSMTree) SerializeLSM(path string, bm *BlockManager) {
 }
 func DeserializeLSM(path string, bm *BlockManager) *LSMTree {
 	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return NewLSMTree(4, bm) //TODO get congfig
+		path2 := path + "backup"
+
+		if _, err := os.Stat(path2); os.IsNotExist(err) {
+			return NewLSMTree(4, bm) //TODO make confing like that
+		} else {
+			os.Rename(path2, path)
+		}
 	}
 	file := NewBlockManagerWrap(path, bm)
 	_, maxLevelBytes := file.ReadFromCurrentPosition(8)
