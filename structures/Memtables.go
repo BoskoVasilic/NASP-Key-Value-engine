@@ -2,6 +2,7 @@ package structures
 
 import (
 	"KVengine/utils"
+	"fmt"
 )
 
 type Memtables struct {
@@ -19,10 +20,25 @@ func NewMemtables(n int, maxEntry int) *Memtables {
 	if n < 2 {
 		panic("N must be a natural number greater than 1")
 	}
+
+	tables := make([]Storage, n)
+
+	for i := range n {
+		tupe := GlobalConfig.Memtable.StructNum
+		switch tupe {
+		case 1:
+			tables[i] = NewBTree(4)
+		case 2:
+			tables[i] = NewSkipList()
+		case 3:
+			tables[i] = NewHashMap(maxEntry + 31)
+		}
+	}
+
 	mt := Memtables{
 		n,
 		maxEntry,
-		make([]Storage, n),
+		tables,
 		make([]WriteStatus, n),
 		0,
 		make(chan bool, n-1),
@@ -66,13 +82,20 @@ func (mt *Memtables) getActive() Storage {
 }
 
 func (mt *Memtables) Put(key string, value []byte) {
+	fmt.Println("Putting key:", key, "value:", string(value), "into memtable")
 	mt.getActive().Put(key, value)
 	WalLock.Lock()
 	GlobalWal.WriteToFile([]byte(key), value, false)
 	WalLock.Unlock()
-	DicLock.Lock()
 	AddItmsString(GlobalD, key)
-	DicLock.Unlock()
+	GlobalCache.Update(key, Entry{value: value, key: key})
+	mt.shiftIfFull()
+}
+
+func (mt *Memtables) PutWithoutWal(key string, value []byte) {
+	fmt.Println("Putting key:", key, "value:", string(value), "into memtable without WAL")
+	mt.getActive().Put(key, value)
+	AddItmsString(GlobalD, key)
 	GlobalCache.Update(key, Entry{value: value, key: key})
 	mt.shiftIfFull()
 }

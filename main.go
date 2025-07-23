@@ -4,12 +4,13 @@ import (
 	"KVengine/cli"
 	"KVengine/structures"
 	"KVengine/utils"
+	"fmt"
 )
 
 func initGlobals() {
+	structures.GlobalConfig = utils.ReadConfig("config.json")
 	structures.GlobalBM = structures.NewBlockManager(structures.GlobalConfig.BlockManager.CacheMaxBlocks)
 	structures.GlobalD = structures.GetDicteneryFormFile(structures.GlobalDictionaryFile, structures.GlobalBM)
-	structures.GlobalConfig = utils.ReadConfig("config.json")
 	structures.GlobalWal = structures.NewWriteAheadLog(structures.GlobalBM)
 	structures.GlobalWal.InitializeWriteAheadLog()
 	structures.GlobalCache = structures.NewCache[string, structures.Entry](structures.GlobalConfig.Cache.MaxEntries)
@@ -21,8 +22,11 @@ func loadFromWal() {
 	status := true
 	for status {
 		entry, status := structures.GlobalWal.GetWalElementByElement()
+		fmt.Println(entry, status)
 		if status {
-			structures.GlobalMemtables.Put(entry.GetKey(), entry.GetValue())
+			structures.GlobalMemtables.PutWithoutWal(entry.GetKey(), entry.GetValue())
+		} else {
+			break
 		}
 	}
 }
