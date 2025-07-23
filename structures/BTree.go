@@ -38,12 +38,12 @@ func NewBTree(order uint8) *BTree {
 func (b *BTree) put(key string, value []byte, tombstone bool) {
 	if b.Root == nil {
 		b.Root = &BTreeNode{
-			Entries: []Entry{{key: key, value: value, deleted: tombstone}},
+			Entries: []Entry{*NewEntry(key, value, tombstone)},
 		}
 		b.Height = 1
 		b.Size++
 	} else {
-		insertEntry(b, b.Root, Entry{key: key, value: value, deleted: tombstone})
+		insertEntry(b, b.Root, *NewEntry(key, value, tombstone))
 	}
 }
 
@@ -81,7 +81,7 @@ func (b *BTree) Delete(key string) {
 	if b.Root == nil {
 		// tree empty, just add a tombstone
 		b.Root = &BTreeNode{
-			Entries: []Entry{{key: key, value: nil, deleted: true}},
+			Entries: []Entry{*NewEntry(key, nil, true)},
 		}
 		b.Height = 1
 		b.Size++

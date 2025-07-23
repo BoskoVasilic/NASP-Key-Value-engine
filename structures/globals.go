@@ -18,5 +18,6 @@ var GlobalConfig *utils.Config
 var GlobalWal *WriteAheadLog
 var GlobalCache *Cache[string, Entry]
 var GlobalLsm *LSMTree
+var GlobalMemtables *Memtables
 var DicLock sync.RWMutex
 var WalLock sync.Mutex

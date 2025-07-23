@@ -1,11 +1,11 @@
 package cli
 
 import (
+	"KVengine/structures"
 	"bufio"
 	"fmt"
 	"os"
 	"strings"
-	"KVengine/structures"
 )
 
 // This is just a placeholder interface for the integration with the actual engine.
@@ -43,8 +43,6 @@ type Iterator interface {
 }
 
 func Run() {
-	
-	memtables := structures.NewMemtables(structures.GlobalConfig.Memtable.StructNum, structures.GlobalConfig.Memtable.InstanceCount)
 
 	// Initialize the global engine
 	fmt.Println("Welcome to our Key-Value Engine CLI!")
@@ -78,8 +76,7 @@ func Run() {
 			key, value := parts[1], strings.Join(parts[2:], " ")
 			fmt.Println("[PUT]", key, value)
 
-			memtables.Put(key, []byte(value))
-			
+			structures.GlobalMemtables.Put(key, []byte(value))
 
 		// GET command expects at least 1 part: key and then retrieves the value from the engine
 		case "GET":
@@ -89,7 +86,7 @@ func Run() {
 			}
 			key := parts[1]
 			fmt.Println("[GET]", key)
-			val, _ := memtables.Get(key)
+			val, _ := structures.GlobalMemtables.Get(key)
 			fmt.Println(string(val))
 
 		// DELETE command expects at least 1 part: key and deletes it from the engine
@@ -135,7 +132,6 @@ func Run() {
 			fmt.Println("[RANGE_ITERATE]", parts[1], parts[2], " -> use NEXT and STOP")
 			// iterator := engine.RangeIterate(parts[1], parts[2])
 			// fmt.Println("Iterator created. Use NEXT and STOP commands.")
-
 
 		// BloomFilter
 		case "BF_CREATE":
