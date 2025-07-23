@@ -57,9 +57,6 @@ func (b *BTree) Get(key string) (Entry, bool) {
 	for node != nil {
 		for i, e := range node.Entries {
 			if key == e.key {
-				if e.deleted {
-					return Entry{}, false
-				}
 				return e, true
 			} else if key < e.key {
 				if len(node.Children) > 0 {
@@ -268,7 +265,6 @@ func nextBTreeEntry(tree *BTree, state *btreeIterState) (*Entry, bool) {
 			if len(n.Children) > i+1 {
 				state.current = n.Children[i+1]
 			}
-
 
 			return &n.Entries[i], true
 		} else {

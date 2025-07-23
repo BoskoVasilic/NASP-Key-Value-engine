@@ -73,6 +73,7 @@ func (mt *Memtables) Put(key string, value []byte) {
 	dicLock.Lock()
 	AddItmsString(&globalD, key)
 	dicLock.Unlock()
+	globalCache.Update(key, Entry{value: value, key: key})
 	mt.shiftIfFull()
 }
 
@@ -81,12 +82,29 @@ func (mt *Memtables) Get(key string) ([]byte, bool) {
 		ind := (mt.activeIndex - i + mt.n) % mt.n
 		value, found := mt.tables[ind].Get(key)
 		if found {
-			return value.value, found
+			if !value.deleted {
+				return value.value, true
+			} else {
+				return nil, false
+			}
 		}
 	}
 	value, found := globalCache.Get(key)
 	if found {
-		return value.value, true
+		if !value.deleted {
+			return value.value, true
+		} else {
+			return nil, false
+		}
+	}
+
+	valPtr, found := globalLsm.ReadSStabels(key, &globalBM, &globalD)
+	if found {
+		if !valPtr.deleted {
+			return valPtr.value, true
+		} else {
+			return nil, false
+		}
 	}
 
 	return nil, false
@@ -96,6 +114,7 @@ func (mt *Memtables) Delete(key string) {
 	mt.getActive().Delete(key)
 	globalWal.WriteToFile([]byte(key), make([]byte, 0), true)
 	AddItmsString(&globalD, key)
+	globalCache.Delete(key)
 	mt.shiftIfFull()
 }
 
@@ -136,6 +155,8 @@ func (mt *Memtables) flush(index int) {
 
 	lsm := NewLSMTree(mt.maxEntry, &globalBM)
 	lsm.AddLevel(path)
-
+	walLock.Lock()
+	globalWal.SetStatus(mt.states[index])
+	walLock.Unlock()
 	lsm.StartMerging(mergeAlg, &globalD, isOneFile, uint64(summary), mergeSize)
 }

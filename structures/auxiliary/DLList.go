@@ -90,3 +90,21 @@ func (dl *DLList[T]) MoveToFront(node *Node[T]) int {
 	dl.Head = node
 	return 1
 }
+
+func (dl *DLList[T]) Remove(node *Node[T]) {
+	if node == nil {
+		return
+	}
+	if node.Prev != nil {
+		node.Prev.Next = node.Next
+	} else {
+		dl.Head = node.Next
+	}
+	if node.Next != nil {
+		node.Next.Prev = node.Prev
+	} else {
+		dl.Tail = node.Prev
+	}
+	node.Prev = nil
+	node.Next = nil
+}

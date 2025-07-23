@@ -517,21 +517,21 @@ func (wal *WriteAheadLog) GetWalElementByElement() (*Entry, bool) {
 	return element, true
 }
 
-func (wal *WriteAheadLog) SetStatus(filePath string, offset int) {
-	wal.status.filePath = filePath
-	wal.status.offset = offset
+func (wal *WriteAheadLog) SetStatus(status WriteStatus) {
+	wal.status.filePath = status.filePath
+	wal.status.offset = status.offset
 
-	blockManagerWrap := NewBlockManagerWrap(filePath, wal.blockManager)
+	blockManagerWrap := NewBlockManagerWrap(status.filePath, wal.blockManager)
 	blockManagerWrap.SetCurrentPosition(SEGMENT_HEADER_SIZE - SEGMENT_OFFSET)
 	offsetBytes := make([]byte, 4)
-	binary.LittleEndian.PutUint32(offsetBytes, uint32(offset))
+	binary.LittleEndian.PutUint32(offsetBytes, uint32(status.offset))
 	blockManagerWrap.OverwriteDataInFile(offsetBytes)
 
 	found := false
 	index := -1
 
 	for i, segment := range wal.segmentPaths {
-		if filepath.Clean(segment.segmentPath.segmentPath) == filepath.Clean(filePath) {
+		if filepath.Clean(segment.segmentPath.segmentPath) == filepath.Clean(status.filePath) {
 			found = true
 			index = i
 			break

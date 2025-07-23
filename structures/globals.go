@@ -12,5 +12,6 @@ var globalD GlobalDictionary
 var globalConfig *utils.Config
 var globalWal WriteAheadLog
 var globalCache Cache[string, Entry]
-var dicLock sync.Mutex
+var globalLsm *LSMTree
+var dicLock sync.RWMutex
 var walLock sync.Mutex

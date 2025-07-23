@@ -533,16 +533,10 @@ func (lt *LSMTree) ReadSStabels(key string, bm *BlockManager, dictenery *GlobalD
 }
 func (lt *LSMTree) SerializeLSM(path string, bm *BlockManager) {
 	// Return the levels of the LSM tree
+	path1 := path + "backup"
 	fmt.Println("Serializing LSMTree to path:", path)
-	if _, err := os.Stat(path); !os.IsNotExist(err) {
-		// If the file does  exist, remove it
-		err := os.Remove(path)
-		if err != nil {
-			fmt.Println("Error removing existing file:", err)
-			return
-		}
-	}
-	file := NewBlockManagerWrap(path, bm)
+
+	file := NewBlockManagerWrap(path1, bm)
 	defer file.FlushBuffer(false)
 	file.WriteToFile(utils.Uint64ToBytes(uint64(lt.maxLevel)))
 	file.WriteToFile(utils.Uint64ToBytes(uint64(len(lt.Levels))))
@@ -557,6 +551,15 @@ func (lt *LSMTree) SerializeLSM(path string, bm *BlockManager) {
 			file.WriteToFile([]byte(path))
 		}
 	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		// If the file does  exist, remove it
+		err := os.Remove(path)
+		if err != nil {
+			fmt.Println("Error removing existing file:", err)
+			return
+		}
+	}
+	os.Rename(path1, path)
 }
 func DeserializeLSM(path string, bm *BlockManager) *LSMTree {
 	file := NewBlockManagerWrap(path, bm)
