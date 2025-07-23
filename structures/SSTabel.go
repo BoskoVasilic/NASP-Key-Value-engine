@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"os"
+	"time"
 )
 
 const (
@@ -20,9 +21,11 @@ type SSTable[T any, H any] struct {
 	SumeeryIndex     uint64 //NumberOfitems in the summary index
 	BlockManager     *BlockManager
 	globalDictionary *GlobalDictionary
+	comprest         bool // Indicates if the SSTable is compressed
+	startPath        string
 }
 
-func NewSSTable[T any, H any](podaci *utils.Iterator[T, H, *Entry], NumberOfEnyerys int, SumeeryIndex uint64, oneFile bool, BlocMenager *BlockManager, dictinery *GlobalDictionary) *SSTable[T, H] {
+func NewSSTable[T any, H any](podaci *utils.Iterator[T, H, *Entry], NumberOfEnyerys int, SumeeryIndex uint64, oneFile bool, BlocMenager *BlockManager, dictinery *GlobalDictionary, isCompreset bool) *SSTable[T, H] {
 	return &SSTable[T, H]{
 		Podaci:           podaci,
 		Filter:           NewBloomFilterWithParams(NumberOfEnyerys, 0.01), // Example parameters for the Bloom filter
@@ -31,20 +34,22 @@ func NewSSTable[T any, H any](podaci *utils.Iterator[T, H, *Entry], NumberOfEnye
 		oneFile:          oneFile,
 		BlockManager:     BlocMenager,
 		globalDictionary: dictinery,
+		comprest:         isCompreset,
+		startPath:        "SSTabel" + time.Now().Format(time.RFC1123),
 	}
 }
 
-func (s *SSTable[T, H]) GenerateSSTabel(StartPath string, compresion bool) string {
+func (s *SSTable[T, H]) GenerateSSTabel() string {
 	treeMerkle := NewMerkleTree()
-	if compresion {
+	if s.comprest {
 		data, firstKey, lastKey := AddItems(s.globalDictionary, s.Podaci)
 		fmt.Println("Generating files SSTable with compresion...")
 
-		return WriteToFilesCompresed(StartPath, s.oneFile, s.BlockManager, s.numberOfEnterys, s.Filter, s.SumeeryIndex, data, firstKey, lastKey, treeMerkle)
+		return WriteToFilesCompresed(s.startPath, s.oneFile, s.BlockManager, s.numberOfEnterys, s.Filter, s.SumeeryIndex, data, firstKey, lastKey, treeMerkle)
 	} else {
 		fmt.Println("Generating files SSTable without compresion...")
 		data, firstKey, lastkey := AddItemsWithNoCompresion(s.globalDictionary, s.Podaci)
-		return WriteToFile(StartPath, s.oneFile, s.BlockManager, s.numberOfEnterys, s.Filter, s.SumeeryIndex, data, firstKey, lastkey, treeMerkle)
+		return WriteToFile(s.startPath, s.oneFile, s.BlockManager, s.numberOfEnterys, s.Filter, s.SumeeryIndex, data, firstKey, lastkey, treeMerkle)
 	}
 }
 func WriteToFilesCompresed[T any, H any](StartPath string, oneFile bool, BlockManager *BlockManager, numberOfEnterys int, Filter *BloomFilter, SumeeryIndex uint64,
