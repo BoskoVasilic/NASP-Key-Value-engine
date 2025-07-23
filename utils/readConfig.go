@@ -23,7 +23,8 @@ type SSTableConfig struct {
 }
 
 type MemtableConfig struct {
-	StructureType string `json:"structureType"`
+	StructureType string `json:"StructureType"` 
+	StructNum    int    `json:"structNum"` 
 	InstanceCount int    `json:"instanceCount"`
 }
 
@@ -32,7 +33,7 @@ type CacheConfig struct {
 }
 
 type LSMTreeConfig struct {
-	AlgorithmType string `json:"algorithmType"`
+	AlgorithmType int `json:"algorithmType"`
 	ParamNumber   int    `json:"paramNumber"`
 }
 
@@ -70,13 +71,14 @@ var defaultConfig = Config{
 	},
 	Memtable: MemtableConfig{
 		StructureType: "skiplist",
+		StructNum: 2,
 		InstanceCount: 5,
 	},
 	Cache: CacheConfig{
 		MaxEntries: 10000,
 	},
 	LSMTree: LSMTreeConfig{
-		AlgorithmType: "leveled",
+		AlgorithmType: 1,
 		ParamNumber:   3,
 	},
 	TokenBucketRateLim: TokenBucketConfig{
@@ -96,6 +98,17 @@ func ReadConfig(filePath string) (*Config, error) {
 	defer file.Close()
 
 	var userConfig Config
+
+	if userConfig.Memtable.StructureType == "skiplist" {
+		userConfig.Memtable.StructNum = 2 
+	} else if userConfig.Memtable.StructureType == "hashmap" {
+		userConfig.Memtable.StructNum = 3 
+	} else if userConfig.Memtable.StructureType == "btree" {
+		userConfig.Memtable.StructNum = 1 
+	} else {
+		userConfig.Memtable.StructNum = defaultConfig.Memtable.StructNum // Use default if invalid
+	}
+
 	decoder := json.NewDecoder(file)
 	if err := decoder.Decode(&userConfig); err != nil {
 		return &defaultConfig, fmt.Errorf("error decoding config file, using default: %v", err)
@@ -150,8 +163,8 @@ func ReadConfig(filePath string) (*Config, error) {
 	}
 
 	// Validate LSMTree
-	if userConfig.LSMTree.AlgorithmType != "leveled" && userConfig.LSMTree.AlgorithmType != "size-tiered" {
-		errs = append(errs, fmt.Sprintf("lsm-tree.algorithmType invalid (%s), defaulting to %s",
+	if userConfig.LSMTree.AlgorithmType != 1 && userConfig.LSMTree.AlgorithmType != 2 {
+		errs = append(errs, fmt.Sprintf("lsm-tree.algorithmType invalid (%d), defaulting to %d",
 			userConfig.LSMTree.AlgorithmType, defaultConfig.LSMTree.AlgorithmType))
 		userConfig.LSMTree.AlgorithmType = defaultConfig.LSMTree.AlgorithmType
 	}

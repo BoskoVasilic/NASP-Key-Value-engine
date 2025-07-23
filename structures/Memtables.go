@@ -98,18 +98,22 @@ func (mt *Memtables) shiftIfFull() {
 func (mt *Memtables) flush(index int) {
 	typeInt := mt.tables[index].GetTypeInt()
 	iterAny := mt.tables[index].GetIter()
+	isCompressed := globalConfig.SSTable.CompressionEnabled
+	isOneFile := !globalConfig.SSTable.SeparateFiles
+	summary := globalConfig.SSTable.SummarySampling
+
 	var path string
 	if typeInt == 1 {
 		iter := iterAny.(*utils.Iterator[BTree, btreeIterState, *Entry])
-		SSTable := NewSSTable(iter, mt.tables[index].GetSize(), 1, true, &globalBM, &globalD, true)
+		SSTable := NewSSTable(iter, mt.tables[index].GetSize(), uint64(summary), isOneFile, &globalBM, &globalD, isCompressed)
 		path = SSTable.GenerateSSTabel()
 	} else if typeInt == 2 {
 		iter := iterAny.(*utils.Iterator[*Node, **Node, *Entry])
-		SSTable := NewSSTable(iter, mt.tables[index].GetSize(), 1, true, &globalBM, &globalD, true)
+		SSTable := NewSSTable(iter, mt.tables[index].GetSize(), uint64(summary), isOneFile, &globalBM, &globalD, isCompressed)
 		path = SSTable.GenerateSSTabel()
 	} else if typeInt == 3 {
 		iter := iterAny.(*utils.Iterator[*[]*Entry, *int, *Entry])
-		SSTable := NewSSTable(iter, mt.tables[index].GetSize(), 1, true, &globalBM, &globalD, true)
+		SSTable := NewSSTable(iter, mt.tables[index].GetSize(), uint64(summary), isOneFile, &globalBM, &globalD, isCompressed)
 		path = SSTable.GenerateSSTabel()
 	} else {
 		panic("Unknown type of Storage")

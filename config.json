@@ -4,6 +4,7 @@
   },
   "memtable": {
     "structureType": "skiplist",
+    "structNum": 2,
     "instanceCount": 5
   },
   "sstable": {
@@ -12,7 +13,7 @@
     "compressionEnabled": true
   },
   "lsm-tree": {
-    "algorithmType": "leveled",
+    "algorithmType": 1, 
     "paramNumber": 3
   },
   "cache": {
