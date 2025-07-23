@@ -145,12 +145,16 @@ func (bmw *BlockManagerWrap) WriteToFile(data []byte) (int, error) {
 		allBlocksToWrite := make([]byte, 0)
 		bmw.writeBuffer, newBlock = bmw.blockManager.AddDataWithEqualSizeToBlock(bmw.currentBufferUsedSpace, data, bmw.writeBuffer)
 		allBlocksToWrite = append(allBlocksToWrite, bmw.writeBuffer...)
-		allBlocksToWrite = append(allBlocksToWrite, newBlock...)
+		if bmw.isSpaceAvailable {
+			allBlocksToWrite = append(allBlocksToWrite, newBlock...)
+		}
 		err := bmw.blockManager.WriteToDisk(bmw.filePath, bmw.writePosition/BLOCK_SIZE, allBlocksToWrite)
 		if err != nil {
 			return 0, err
 		}
-		bmw.fileEnd += BLOCK_SIZE
+		if bmw.isSpaceAvailable {
+			bmw.fileEnd += BLOCK_SIZE
+		}
 		bmw.writePosition += BLOCK_SIZE
 		bmw.writeBuffer = bmw.writeBuffer[:0]
 		bmw.writeBuffer = newBlock

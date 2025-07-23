@@ -62,7 +62,6 @@ type WriteAheadLog struct {
 
 type WriteAheadLogSegment struct {
 	logNumber         int
-	offset            int //not needed, can be removed
 	segmentPath       WriteAheadLogPaths
 	elements          []WriteAheadLogElement
 	segmentBlocksLeft int
@@ -137,10 +136,9 @@ func NewWriteAheadLog(blockManager *BlockManager) *WriteAheadLog {
 	}
 }
 
-func NewWriteAheadLogSegment(logNumber int, offset int, segmentPath WriteAheadLogPaths, blockManager *BlockManager) *WriteAheadLogSegment {
+func NewWriteAheadLogSegment(logNumber int, segmentPath WriteAheadLogPaths, blockManager *BlockManager) *WriteAheadLogSegment {
 	return &WriteAheadLogSegment{
 		logNumber:         logNumber,
-		offset:            offset,
 		segmentPath:       segmentPath,
 		elements:          make([]WriteAheadLogElement, 0),
 		segmentBlocksLeft: SEGMENT_SIZE / BLOCK_SIZE,
@@ -170,7 +168,7 @@ func (wal *WriteAheadLog) GetSegmentPaths() error {
 			if t.HasBirthTime() {
 				createdTime := uint64(t.BirthTime().Unix())
 				segmentLogPath := NewWriteAheadLogPaths(path, createdTime)
-				segment := NewWriteAheadLogSegment(segmentNumber, 0, *segmentLogPath, wal.blockManager)
+				segment := NewWriteAheadLogSegment(segmentNumber, *segmentLogPath, wal.blockManager)
 				segmentNumber++
 				wal.segmentPaths = append(wal.segmentPaths, segment)
 			}
@@ -198,7 +196,7 @@ func (wal *WriteAheadLog) InitializeWriteAheadLog() {
 	wal.GetSegmentPaths()
 	if len(wal.segmentPaths) == 0 {
 		initialSegmentPath := NewWriteAheadLogPaths("wal/wal_1.log", 0)
-		initialSegment := NewWriteAheadLogSegment(1, 0, *initialSegmentPath, wal.blockManager)
+		initialSegment := NewWriteAheadLogSegment(1, *initialSegmentPath, wal.blockManager)
 		initialSegment.InitSegmentHeader()
 		wal.segmentPaths = append(wal.segmentPaths, initialSegment)
 		wal.lastSegment = initialSegment
@@ -240,7 +238,7 @@ func (wal *WriteAheadLog) InitializeWriteAheadLog() {
 		}
 		if wal.status == (WriteStatus{}) {
 			initialSegmentPath := NewWriteAheadLogPaths("wal/wal_1.log", 0)
-			initialSegment := NewWriteAheadLogSegment(1, 0, *initialSegmentPath, wal.blockManager)
+			initialSegment := NewWriteAheadLogSegment(1, *initialSegmentPath, wal.blockManager)
 			initialSegment.InitSegmentHeader()
 			wal.segmentPaths = append(wal.segmentPaths, initialSegment)
 			wal.lastSegment = initialSegment
@@ -334,7 +332,7 @@ func (wal *WriteAheadLog) WriteToFile(element *WriteAheadLogElement) {
 				blocksLeft := wal.lastSegment.segmentBlocksLeft
 				wal.lastSegment.blockManagerWrap.WriteToFile(allBlocksToWrite[:blocksLeft*BLOCK_SIZE])
 				wal.lastSegment.segmentBlocksLeft = 0
-				newSegment := NewWriteAheadLogSegment(wal.lastSegment.logNumber+1, SEGMENT_SIZE*wal.lastSegment.logNumber, *NewWriteAheadLogPaths(fmt.Sprintf("wal/wal_%d.log", wal.lastSegment.logNumber+1), 0), wal.blockManager)
+				newSegment := NewWriteAheadLogSegment(wal.lastSegment.logNumber+1, *NewWriteAheadLogPaths(fmt.Sprintf("wal/wal_%d.log", wal.lastSegment.logNumber+1), 0), wal.blockManager)
 				newSegment.InitSegmentHeader()
 				newSegment.blockManagerWrap.InitializeWriteBuffer()
 				newSegment.blockManagerWrap.WriteToFile(allBlocksToWrite[blocksLeft*BLOCK_SIZE:])
@@ -366,14 +364,13 @@ func (wal *WriteAheadLog) WriteToFile(element *WriteAheadLogElement) {
 		dataWithType = append(dataWithType, lenBytes...)
 		dataWithType = append(dataWithType, data...)
 		wal.lastSegment.blockManagerWrap.WriteToFile(dataWithType)
-		wal.lastSegment.blockManagerWrap.FlushBuffer(false)
 	} else if len(data)+RECORD_TYPE_SIZE+PAYLOAD_SIZE <= BLOCK_SIZE-wal.lastSegment.blockManagerWrap.currentBufferUsedSpace {
 		dataWithType := make([]byte, 0)
 		dataWithType = append(dataWithType, byte(FULL))
 		dataWithType = append(dataWithType, data...)
 		wal.lastSegment.segmentBlocksLeft -= 1
 		if wal.lastSegment.segmentBlocksLeft == 0 {
-			newSegment := NewWriteAheadLogSegment(wal.lastSegment.logNumber+1, SEGMENT_SIZE*wal.lastSegment.logNumber, *NewWriteAheadLogPaths(fmt.Sprintf("wal/wal_%d.log", wal.lastSegment.logNumber+1), 0), wal.blockManager)
+			newSegment := NewWriteAheadLogSegment(wal.lastSegment.logNumber+1, *NewWriteAheadLogPaths(fmt.Sprintf("wal/wal_%d.log", wal.lastSegment.logNumber+1), 0), wal.blockManager)
 			newSegment.InitSegmentHeader()
 			wal.lastSegment.blockManagerWrap.setAvilableSpace(false)
 			newSegment.blockManagerWrap.InitializeWriteBuffer()
@@ -382,6 +379,7 @@ func (wal *WriteAheadLog) WriteToFile(element *WriteAheadLogElement) {
 			newSegment.blockManagerWrap.WriteToFile(emptyBlock)
 		}
 		wal.lastSegment.blockManagerWrap.WriteToFile(dataWithType)
+		wal.lastSegment.blockManagerWrap.FlushBuffer(false)
 	}
 }
 
