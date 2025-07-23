@@ -135,7 +135,9 @@ func (mt *Memtables) Get(key string) ([]byte, bool) {
 
 func (mt *Memtables) Delete(key string) {
 	mt.getActive().Delete(key)
-	GlobalWal.WriteToFile([]byte(key), make([]byte, 0), true)
+	WalLock.Lock()
+	GlobalWal.WriteToFile([]byte(key), make([]byte, 1), true)
+	WalLock.Unlock()
 	AddItmsString(GlobalD, key)
 	GlobalCache.Delete(key)
 	mt.shiftIfFull()

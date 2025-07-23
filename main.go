@@ -21,6 +21,7 @@ func initGlobals() {
 func loadFromWal() {
 	status := true
 	for status {
+		fmt.Println("Loading entry from WAL:")
 		entry, status := structures.GlobalWal.GetWalElementByElement()
 		fmt.Println(entry, status)
 		if status {
