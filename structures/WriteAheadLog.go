@@ -106,13 +106,15 @@ func NewCurrentReadStatus(segment *WriteAheadLogSegment, offset int, endReached 
 	}
 }
 
-func NewWriteAheadLogElement(keySize uint64, valueSize uint64, key []byte, value []byte) *WriteAheadLogElement {
+func NewWriteAheadLogElement(key []byte, value []byte, tombstone bool) *WriteAheadLogElement {
+	keySize := uint64(len(key))
+	valueSize := uint64(len(value))
 	timestamp := uint64(time.Now().Unix())
-	elementSerialized := serializeForHashing(timestamp, false, keySize, valueSize, key, value)
+	elementSerialized := serializeForHashing(timestamp, tombstone, keySize, valueSize, key, value)
 	return &WriteAheadLogElement{
 		crc:       CRC32(elementSerialized),
 		timestamp: timestamp,
-		tombstone: false,
+		tombstone: tombstone,
 		keySize:   keySize,
 		valueSize: valueSize,
 		key:       key,
@@ -290,7 +292,8 @@ func (s *WriteAheadLogSegment) InitSegmentHeader() {
 	s.blockManagerWrap.FlushBuffer(false)
 }
 
-func (wal *WriteAheadLog) WriteToFile(element *WriteAheadLogElement) {
+func (wal *WriteAheadLog) WriteToFile(key []byte, value []byte, tombstone bool) {
+	element := NewWriteAheadLogElement(key, value, tombstone)
 	data := element.Serialize()
 	newBlock := make([]byte, BLOCK_SIZE)
 	wal.lastSegment.blockManagerWrap.InitializeWriteBuffer()
@@ -364,6 +367,7 @@ func (wal *WriteAheadLog) WriteToFile(element *WriteAheadLogElement) {
 		dataWithType = append(dataWithType, lenBytes...)
 		dataWithType = append(dataWithType, data...)
 		wal.lastSegment.blockManagerWrap.WriteToFile(dataWithType)
+		wal.lastSegment.blockManagerWrap.FlushBuffer(false)
 	} else if len(data)+RECORD_TYPE_SIZE+PAYLOAD_SIZE <= BLOCK_SIZE-wal.lastSegment.blockManagerWrap.currentBufferUsedSpace {
 		dataWithType := make([]byte, 0)
 		dataWithType = append(dataWithType, byte(FULL))
@@ -437,7 +441,7 @@ func (wal *WriteAheadLog) GetWalElement() (*Entry, bool) {
 func (wal *WriteAheadLog) GetCurrentStatus() WriteStatus {
 	status := WriteStatus{
 		filePath: wal.lastSegment.blockManagerWrap.filePath,
-		offset:   wal.lastSegment.blockManagerWrap.GetLastWrittenByteOffset(),
+		offset:   wal.lastSegment.blockManagerWrap.GetLastWrittenByteOffset() + 1,
 	}
 	return status
 }

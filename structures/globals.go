@@ -2,8 +2,15 @@
 
 package structures
 
-import "KVengine/utils"
+import (
+	"KVengine/utils"
+	"sync"
+)
 
 var globalBM BlockManager
 var globalD GlobalDictionary
 var globalConfig *utils.Config
+var globalWal WriteAheadLog
+var globalCache Cache[string, Entry]
+var dicLock sync.Mutex
+var walLock sync.Mutex
