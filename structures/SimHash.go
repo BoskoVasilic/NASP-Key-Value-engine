@@ -84,7 +84,7 @@ func SimHash(text string) []byte {
 }
 
 // CalculateHemmingwayDistance compares two fingerprints and calculates the Hamming distance.
-func CalculateHemmingwayDistance(fingerprint1, fingerprint2 []byte) int {
+func CalculateHammingDistance(fingerprint1, fingerprint2 []byte) int {
 	if len(fingerprint1) != len(fingerprint2) {
 		panic("Inputs must have the same length")
 	}
@@ -128,29 +128,29 @@ func TestSimHashAndHemmingwayDistance() {
 	fmt.Println("\nHamming Distance Matrix:")
 	for i := 0; i < len(texts); i++ {
 		for j := 0; j < len(texts); j++ {
-			distance := CalculateHemmingwayDistance(fingerprints[i], fingerprints[j])
+			distance := CalculateHammingDistance(fingerprints[i], fingerprints[j])
 			fmt.Printf("%3d ", distance)
 		}
 		fmt.Println()
 	}
 
 	fmt.Println("\nAnalysis:")
-	if CalculateHemmingwayDistance(fingerprints[0], fingerprints[1]) <
-		CalculateHemmingwayDistance(fingerprints[0], fingerprints[3]) {
+	if CalculateHammingDistance(fingerprints[0], fingerprints[1]) <
+		CalculateHammingDistance(fingerprints[0], fingerprints[3]) {
 		fmt.Println("GOOD: Text 1 and Text 2 are more similar than Text 1 and Text 4, as expected.")
 	} else {
 		fmt.Println("BAD: Unexpected result: Text 1 and Text 4 appear more similar than Text 1 and Text 2.")
 	}
 
-	if CalculateHemmingwayDistance(fingerprints[0], fingerprints[2]) <
-		CalculateHemmingwayDistance(fingerprints[0], fingerprints[4]) {
+	if CalculateHammingDistance(fingerprints[0], fingerprints[2]) <
+		CalculateHammingDistance(fingerprints[0], fingerprints[4]) {
 		fmt.Println("GOOD: Text 1 and Text 3 are more similar than Text 1 and Text 5, as expected.")
 	} else {
 		fmt.Println("BAD: Unexpected result: Text 1 and Text 5 appear more similar than Text 1 and Text 3.")
 	}
 
-	if CalculateHemmingwayDistance(fingerprints[1], fingerprints[2]) <
-		CalculateHemmingwayDistance(fingerprints[1], fingerprints[5]) {
+	if CalculateHammingDistance(fingerprints[1], fingerprints[2]) <
+		CalculateHammingDistance(fingerprints[1], fingerprints[5]) {
 		fmt.Println("GOOD: Text 2 and Text 3 are more similar than Text 2 and Text 6, as expected.")
 	} else {
 		fmt.Println("BAD: Unexpected result: Text 2 and Text 6 appear more similar than Text 2 and Text 3.")

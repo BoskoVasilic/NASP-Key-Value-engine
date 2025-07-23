@@ -38,8 +38,8 @@ func Run() {
 		switch cmd {
 		case "HELP":
 			printCommands()
-
 		// Basic operations: PUT, GET, DELETE
+
 		// PUT command expects at least 2 parts: key and value and adds them to the engine
 		case "PUT":
 			if len(parts) < 3 {
@@ -59,7 +59,11 @@ func Run() {
 			}
 			key := parts[1]
 			fmt.Println("[GET]", "d"+key)
-			val, _ := structures.GlobalMemtables.Get("d"+key)
+			val, found := structures.GlobalMemtables.Get("d"+key)
+			if !found {
+				fmt.Println("Key not found in database.")
+				continue
+			}
 			fmt.Println(string(val))
 
 		// DELETE command expects at least 1 part: key and deletes it from the engine
@@ -70,16 +74,34 @@ func Run() {
 			}
 			key := parts[1]
 			fmt.Println("[DELETE]", "d"+key)
-			structures.GlobalMemtables.Delete("d" + key)
+			if _, found := structures.GlobalMemtables.Get("d" + key); !found {
+				fmt.Println("Key not found in database.")
+				continue
+			} else {
+				structures.GlobalMemtables.Delete("d" + key)
+				fmt.Println("Key found and deleted:", key)
+			}
 
-		// Scanners from 2.4
 		case "PREFIX_SCAN":
 			if len(parts) < 4 {
 				fmt.Println("Usage: PREFIX_SCAN prefix pageNumber pageSize")
 				continue
 			}
 			fmt.Println("[PREFIX_SCAN]", parts[1], parts[2], parts[3])
-			// engine.PrefixScan(parts[1], parts[2], parts[3])
+
+			prefix := parts[1]
+			pageNumber, err1 := strconv.Atoi(parts[2])
+			if err1 != nil {
+				fmt.Println("Invalid page number:", parts[2])
+				continue
+			}
+			numberOfEntities, err2 := strconv.Atoi(parts[3])
+			if err2 != nil {
+				fmt.Println("Invalid number of entities:", parts[3])
+				continue
+			}
+
+			structures.PrefixScan(prefix, pageNumber, numberOfEntities, structures.GlobalD, structures.GlobalBM)
 
 		case "RANGE_SCAN":
 			if len(parts) < 5 {
@@ -87,9 +109,23 @@ func Run() {
 				continue
 			}
 			fmt.Println("[RANGE_SCAN]", parts[1], parts[2], parts[3], parts[4])
-			// engine.RangeScan(parts[1], parts[2], parts[3], parts[4])
 
-		// Iterators from 2.5
+			minKey := parts[1]
+			maxKey := parts[2]
+			pageNumber, err1 := strconv.Atoi(parts[3])
+			if err1 != nil {
+				fmt.Println("Invalid page number:", parts[3])
+				continue
+			}
+			numberOfEntities, err2 := strconv.Atoi(parts[4])
+			if err2 != nil {
+				fmt.Println("Invalid number of entities:", parts[4])
+				continue
+			}
+
+			structures.RangeScan(minKey, maxKey, pageNumber, numberOfEntities, structures.GlobalD, structures.GlobalBM)
+
+
 		case "PREFIX_ITERATE":
 			if len(parts) < 2 {
 				fmt.Println("Usage: PREFIX_ITERATE prefix")
@@ -97,14 +133,20 @@ func Run() {
 			}
 			fmt.Println("[PREFIX_ITERATE]", parts[1], " -> use NEXT and STOP")
 
+			prefix := parts[1]
+			structures.PrefixItterator(prefix, structures.GlobalD, structures.GlobalBM)
+
 		case "RANGE_ITERATE":
 			if len(parts) < 3 {
 				fmt.Println("Usage: RANGE_ITERATE minKey maxKey")
 				continue
 			}
 			fmt.Println("[RANGE_ITERATE]", parts[1], parts[2], " -> use NEXT and STOP")
-			// iterator := engine.RangeIterate(parts[1], parts[2])
-			// fmt.Println("Iterator created. Use NEXT and STOP commands.")
+
+			minKey := parts[1]
+			maxKey := parts[2]
+			structures.RangeItterator(minKey, maxKey, structures.GlobalD, structures.GlobalBM)
+
 
 		// BloomFilter
 		case "BF_CREATE":
@@ -302,16 +344,26 @@ func Run() {
 			text := strings.Join(parts[2:], " ")
 			fmt.Println("[SimHash Save]", name, text)
 
-			structures.GlobalMemtables.Put("s"+name, []byte(text))	
+			hash := structures.SimHash(text) // Generate SimHash for the text
+
+			structures.GlobalMemtables.Put("s"+name, hash)
 
 		case "SIMHASH_DIST":
 			if len(parts) < 3 {
-				fmt.Println("Usage: SIMHASH_DIST name1 name2")
+				fmt.Println("Usage: SIMHASH_DIST key1 key2")
 				continue
 			}
 			fmt.Println("[SimHash Distance]", parts[1], parts[2])
 			// Hamming distance between two SimHashes
-			// dist, _ := engine.SimHashDistance(parts[1], parts[2])
+
+			hash1, found1 := structures.GlobalMemtables.Get("s" + parts[1])
+			hash2, found2 := structures.GlobalMemtables.Get("s" + parts[2])
+			if !found1 || !found2 {
+				fmt.Println("One or both SimHashes not found")
+				continue
+			}
+			dist := structures.CalculateHammingDistance(hash1, hash2)
+			fmt.Printf("Hamming distance between '%s' and '%s': %d\n", parts[1], parts[2], dist)
 
 		case "EXIT", "QUIT":
 			fmt.Println("Exiting CLI. Goodbye!")
