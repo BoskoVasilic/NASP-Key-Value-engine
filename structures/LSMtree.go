@@ -385,7 +385,7 @@ func (lt *LSMTree) StartMerging(configMergeFunction int, dictenery *GlobalDictio
 					}
 					lt.Levels[i] = &newLevel
 					// Remove the merged files from the current level
-					lt.SerializeLSM("tree_data", lt.BlockMenager)
+					lt.SerializeLSM(GlobalLSMTreeFile, lt.BlockMenager)
 					fmt.Println("-------------------------------------------------------------------------")
 					fmt.Println("Removing files from level:", i, "from index", first, "to", last)
 					j = 0
@@ -430,7 +430,7 @@ func (lt *LSMTree) StartMerging(configMergeFunction int, dictenery *GlobalDictio
 					lt.Levels[i] = &newLevel
 					j = 0
 					fmt.Println("Data before serialization:", lt)
-					lt.SerializeLSM("tree_data", lt.BlockMenager)
+					lt.SerializeLSM(GlobalLSMTreeFile, lt.BlockMenager)
 					fmt.Println("-------------------------------------------------------------------------")
 					fmt.Println("Removing files from level:", i, "from index", first, "to", last)
 					for j := 0; j < len(levelForDelete); j++ {
