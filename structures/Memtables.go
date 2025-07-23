@@ -1,5 +1,9 @@
 package structures
 
+import (
+	"KVengine/utils"
+)
+
 type Memtables struct {
 	n              int
 	maxEntry       int
@@ -69,7 +73,7 @@ func (mt *Memtables) Get(key string) ([]byte, bool) {
 		ind := (mt.activeIndex - i + mt.n) % mt.n
 		value, found := mt.tables[ind].Get(key)
 		if found {
-			return value, found
+			return value.value, found
 		}
 	}
 
@@ -87,9 +91,33 @@ func (mt *Memtables) shiftIfFull() {
 		mt.flushChannel <- true
 		// clear Storage at activeIndex
 
+
 	}
 }
 
 func (mt *Memtables) flush(index int) {
-	// TODO call SSTabel
+	// TODO call SSTable
+	typeInt := mt.getActive().GetTypeInt()
+	iterAny := mt.getActive().GetIter()
+	var path string
+	if typeInt == 1 {
+		iter := iterAny.(*utils.Iterator[BTree, btreeIterState, *Entry])
+		SSTable := NewSSTable(iter, mt.getActive().GetSize(), 1, true, &globalBM, &globalD, true)
+		path = SSTable.GenerateSSTabel()
+	} else if typeInt == 2 {
+		iter := iterAny.(*utils.Iterator[*Node, **Node, *Entry])
+		SSTable := NewSSTable(iter, mt.getActive().GetSize(), 1, true, &globalBM, &globalD, true)
+		path = SSTable.GenerateSSTabel()
+	} else if typeInt == 3 {
+		iter := iterAny.(*utils.Iterator[*[]*Entry, *int, *Entry])
+		SSTable := NewSSTable(iter, mt.getActive().GetSize(), 1, true, &globalBM, &globalD, true)
+		path = SSTable.GenerateSSTabel()
+	} else {
+		panic("Unknown type of Storage")
+	}
+
+	lsm := NewLSMTree(mt.maxEntry, &globalBM)
+	lsm.AddLevel(path)
+	lsm.StartMerging(0, &globalD, true, 5, 10)
+
 }

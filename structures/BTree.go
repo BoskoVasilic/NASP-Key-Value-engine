@@ -35,7 +35,7 @@ func NewBTree(order uint8) *BTree {
 }
 
 // Put inserts or updates a key–value pair
-func (b *BTree) Put(key string, value []byte, tombstone bool) {
+func (b *BTree) put(key string, value []byte, tombstone bool) {
 	if b.Root == nil {
 		b.Root = &BTreeNode{
 			Entries: []Entry{{key: key, value: value, deleted: tombstone}},
@@ -47,32 +47,36 @@ func (b *BTree) Put(key string, value []byte, tombstone bool) {
 	}
 }
 
+func (b *BTree) Put(key string, value []byte) {
+	b.put(key, value, false)
+}
+
 // Get returns the value for a key
-func (b *BTree) Get(key string) ([]byte, bool) {
+func (b *BTree) Get(key string) (Entry, bool) {
 	node := b.Root
 	for node != nil {
 		for i, e := range node.Entries {
 			if key == e.key {
 				if e.deleted {
-					return nil, false
+					return Entry{}, false
 				}
-				return e.value, true
+				return e, true
 			} else if key < e.key {
 				if len(node.Children) > 0 {
 					node = node.Children[i]
 					goto NEXT
 				}
-				return nil, false
+				return Entry{}, false
 			}
 		}
 		if len(node.Children) > 0 {
 			node = node.Children[len(node.Children)-1]
 		} else {
-			return nil, false
+			return Entry{}, false
 		}
 	NEXT:
 	}
-	return nil, false
+	return Entry{}, false
 }
 
 // Delete marks a key (an entry) as logically deleted
@@ -88,7 +92,7 @@ func (b *BTree) Delete(key string) {
 	}
 	if !markEntrydeleted(b.Root, key) {
 		// not found, insert a new tombstone entry
-		b.Put(key, nil, true)
+		b.put(key, nil, true)
 	}
 }
 
@@ -216,7 +220,7 @@ func replaceChild(children []*BTreeNode, old, left, right *BTreeNode) []*BTreeNo
 
 // GetIter returns an iterator over the BTree entries in sorted (in‑order) order.
 // It uses an explicit stack (slice) for traversal and returns Entry values directly.
-func (b *BTree) GetIter() *utils.Iterator[BTree, btreeIterState, Entry] {
+func (b *BTree) GetIter() any {
 	state := btreeIterState{
 		nodeStack:  []*BTreeNode{},
 		indexStack: []int{},
@@ -237,7 +241,7 @@ type btreeIterState struct {
 }
 
 // nextBTreeEntry performs one step of in‑order traversal using state
-func nextBTreeEntry(tree *BTree, state *btreeIterState) (Entry, bool) {
+func nextBTreeEntry(tree *BTree, state *btreeIterState) (*Entry, bool) {
 	var zero Entry
 
 	// Push leftmost path of current node
@@ -265,7 +269,8 @@ func nextBTreeEntry(tree *BTree, state *btreeIterState) (Entry, bool) {
 				state.current = n.Children[i+1]
 			}
 
-			return n.Entries[i], true
+
+			return &n.Entries[i], true
 		} else {
 			// Pop finished node
 			state.nodeStack = state.nodeStack[:len(state.nodeStack)-1]
@@ -273,7 +278,7 @@ func nextBTreeEntry(tree *BTree, state *btreeIterState) (Entry, bool) {
 		}
 	}
 
-	return zero, false
+	return &zero, false
 }
 
 // serilization function
@@ -286,7 +291,7 @@ func (b *BTree) Serialize() []byte {
 	buf = append(buf, sizeBytes...)
 
 	// use iterator to walk entries in sorted order
-	iter := b.GetIter()
+	iter := b.GetIter().(*utils.Iterator[BTree, btreeIterState, *Entry])
 	for {
 		entry, ok := iter.Next()
 		if !ok {
@@ -307,6 +312,15 @@ func PrintTree(node *BTreeNode, level int) {
 	for _, child := range node.Children {
 		PrintTree(child, level+1)
 	}
+}
+
+func (b *BTree) GetTypeInt() int {
+	return 1 // BTree is represented by 1
+}
+
+func (b *BTree) GetNew() Storage {
+	return NewBTree(b.Order)
+
 }
 
 // test function for BTree

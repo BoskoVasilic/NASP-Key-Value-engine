@@ -29,7 +29,7 @@ func AddItems[T any, H any](globalDictionary *GlobalDictionary, itterator *utils
 	list := auxiliary.NewListWithIterator[ExportEntry]()
 	firsKey := ""
 	lastKey := ""
-	for true {
+	for {
 		entry, ok := itterator.Next()
 		if !ok {
 			break
@@ -61,7 +61,7 @@ func AddItemsWithNoCompresion[T any, H any](globalDictionary *GlobalDictionary, 
 	list := auxiliary.NewListWithIterator[Entry]()
 	firsKey := ""
 	lastKey := ""
-	for true {
+	for {
 		entry, ok := itterator.Next()
 		if !ok {
 			break
@@ -106,8 +106,8 @@ func (GlobalDictionary *GlobalDictionary) AddItem(entry *Entry) uint64 {
 	return befor
 }
 func (GlobalDictionary *GlobalDictionary) GetItem(key string) (Entry, bool) {
-	value, ok := GlobalDictionary.SkipList.Get(key)
-	if ok != nil {
+	value, found := GlobalDictionary.SkipList.Get(key)
+	if !found {
 		return Entry{}, false
 	}
 	if value.key != key {
@@ -122,13 +122,13 @@ func (GlobalDictionary *GlobalDictionary) ConvertListToExportEntry(list *auxilia
 	iterator := list.GetIter()
 	list2 := auxiliary.NewListWithIterator[ExportEntry]()
 
-	for true {
+	for {
 		entry, ok := iterator.Next()
 		if !ok {
 			break
 		}
 		newKeyBytes, found := GlobalDictionary.SkipList.Get(entry.key)
-		if found != nil {
+		if !found {
 			// If the key is not found in the SkipList, we can skip this entry
 			continue
 		}

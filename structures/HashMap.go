@@ -107,7 +107,7 @@ func (h *HashMap) ToBytes() []byte {
 	return buf
 }
 
-func (h *HashMap) GetIter() *utils.Iterator[[]*Entry, int, *Entry] {
+func (h *HashMap) GetIter() any {
 
 	entries := make([]*Entry, 0)
 
@@ -165,4 +165,13 @@ func DeserializeHM(data []byte) *HashMap {
 	}
 
 	return h
+}
+
+func (h *HashMap) GetTypeInt() int {
+	return 3 // HashMap is represented by 3
+
+}
+
+func (h *HashMap) GetNew() Storage {
+	return NewHashMap(h.size)
 }
