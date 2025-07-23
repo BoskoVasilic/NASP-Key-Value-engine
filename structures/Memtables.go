@@ -65,6 +65,7 @@ func (mt *Memtables) getActive() Storage {
 
 func (mt *Memtables) Put(key string, value []byte) {
 	mt.getActive().Put(key, value)
+	globalD.AddItem(NewEntry(key, value, false))
 	mt.shiftIfFull()
 }
 
