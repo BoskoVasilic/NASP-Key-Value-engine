@@ -67,13 +67,13 @@ func (mt *Memtables) getActive() Storage {
 
 func (mt *Memtables) Put(key string, value []byte) {
 	mt.getActive().Put(key, value)
-	walLock.Lock()
-	globalWal.WriteToFile([]byte(key), value, false)
-	walLock.Unlock()
-	dicLock.Lock()
-	AddItmsString(&globalD, key)
-	dicLock.Unlock()
-	globalCache.Update(key, Entry{value: value, key: key})
+	WalLock.Lock()
+	GlobalWal.WriteToFile([]byte(key), value, false)
+	WalLock.Unlock()
+	DicLock.Lock()
+	AddItmsString(GlobalD, key)
+	DicLock.Unlock()
+	GlobalCache.Update(key, Entry{value: value, key: key})
 	mt.shiftIfFull()
 }
 
@@ -89,7 +89,7 @@ func (mt *Memtables) Get(key string) ([]byte, bool) {
 			}
 		}
 	}
-	value, found := globalCache.Get(key)
+	value, found := GlobalCache.Get(key)
 	if found {
 		if !value.deleted {
 			return value.value, true
@@ -98,7 +98,7 @@ func (mt *Memtables) Get(key string) ([]byte, bool) {
 		}
 	}
 
-	valPtr, found := globalLsm.ReadSStabels(key, &globalBM, &globalD)
+	valPtr, found := GlobalLsm.ReadSStabels(key, GlobalBM, GlobalD)
 	if found {
 		if !valPtr.deleted {
 			return valPtr.value, true
@@ -112,15 +112,15 @@ func (mt *Memtables) Get(key string) ([]byte, bool) {
 
 func (mt *Memtables) Delete(key string) {
 	mt.getActive().Delete(key)
-	globalWal.WriteToFile([]byte(key), make([]byte, 0), true)
-	AddItmsString(&globalD, key)
-	globalCache.Delete(key)
+	GlobalWal.WriteToFile([]byte(key), make([]byte, 0), true)
+	AddItmsString(GlobalD, key)
+	GlobalCache.Delete(key)
 	mt.shiftIfFull()
 }
 
 func (mt *Memtables) shiftIfFull() {
 	if mt.getActive().GetSize() == mt.maxEntry {
-		mt.states[mt.activeIndex] = globalWal.GetCurrentStatus()
+		mt.states[mt.activeIndex] = GlobalWal.GetCurrentStatus()
 		mt.activeIndex = (mt.activeIndex + 1) % mt.n
 		mt.flushChannel <- true
 		mt.tables[mt.activeIndex] = mt.getActive().GetNew()
@@ -130,33 +130,33 @@ func (mt *Memtables) shiftIfFull() {
 func (mt *Memtables) flush(index int) {
 	typeInt := mt.tables[index].GetTypeInt()
 	iterAny := mt.tables[index].GetIter()
-	isCompressed := globalConfig.SSTable.CompressionEnabled
-	isOneFile := !globalConfig.SSTable.SeparateFiles
-	summary := globalConfig.SSTable.SummarySampling
-	mergeAlg := globalConfig.LSMTree.AlgorithmType
-	mergeSize := globalConfig.LSMTree.ParamNumber
+	isCompressed := GlobalConfig.SSTable.CompressionEnabled
+	isOneFile := !GlobalConfig.SSTable.SeparateFiles
+	summary := GlobalConfig.SSTable.SummarySampling
+	mergeAlg := GlobalConfig.LSMTree.AlgorithmType
+	mergeSize := GlobalConfig.LSMTree.ParamNumber
 
 	var path string
 	if typeInt == 1 {
 		iter := iterAny.(*utils.Iterator[BTree, btreeIterState, *Entry])
-		SSTable := NewSSTable(iter, mt.tables[index].GetSize(), uint64(summary), isOneFile, &globalBM, &globalD, isCompressed)
+		SSTable := NewSSTable(iter, mt.tables[index].GetSize(), uint64(summary), isOneFile, GlobalBM, GlobalD, isCompressed)
 		path = SSTable.GenerateSSTabel()
 	} else if typeInt == 2 {
 		iter := iterAny.(*utils.Iterator[*Node, **Node, *Entry])
-		SSTable := NewSSTable(iter, mt.tables[index].GetSize(), uint64(summary), isOneFile, &globalBM, &globalD, isCompressed)
+		SSTable := NewSSTable(iter, mt.tables[index].GetSize(), uint64(summary), isOneFile, GlobalBM, GlobalD, isCompressed)
 		path = SSTable.GenerateSSTabel()
 	} else if typeInt == 3 {
 		iter := iterAny.(*utils.Iterator[*[]*Entry, *int, *Entry])
-		SSTable := NewSSTable(iter, mt.tables[index].GetSize(), uint64(summary), isOneFile, &globalBM, &globalD, isCompressed)
+		SSTable := NewSSTable(iter, mt.tables[index].GetSize(), uint64(summary), isOneFile, GlobalBM, GlobalD, isCompressed)
 		path = SSTable.GenerateSSTabel()
 	} else {
 		panic("Unknown type of Storage")
 	}
 
-	lsm := NewLSMTree(mt.maxEntry, &globalBM)
+	lsm := NewLSMTree(mt.maxEntry, GlobalBM)
 	lsm.AddLevel(path)
-	walLock.Lock()
-	globalWal.SetStatus(mt.states[index])
-	walLock.Unlock()
-	lsm.StartMerging(mergeAlg, &globalD, isOneFile, uint64(summary), mergeSize)
+	WalLock.Lock()
+	GlobalWal.SetStatus(mt.states[index])
+	WalLock.Unlock()
+	lsm.StartMerging(mergeAlg, GlobalD, isOneFile, uint64(summary), mergeSize)
 }

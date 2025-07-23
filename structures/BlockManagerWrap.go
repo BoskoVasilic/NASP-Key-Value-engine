@@ -152,7 +152,7 @@ func (bmw *BlockManagerWrap) WriteToFile(data []byte) (int, error) {
 		if err != nil {
 			return 0, err
 		}
-    
+
 		if bmw.isSpaceAvailable {
 			bmw.fileEnd += BLOCK_SIZE
 		}
@@ -229,7 +229,7 @@ func (bmw *BlockManagerWrap) OverwriteDataInFile(data []byte) (int, error) {
 			}
 			cutOfData := data[bmw.fileEnd-startPosition:]
 
-			bmw.fileEnd += int((math.Ceil(float64(len(cutOfData)) / float64(BLOCK_SIZE))) * BLOCK_SIZE)
+			bmw.fileEnd += int(math.Ceil(float64(len(cutOfData))/float64(BLOCK_SIZE))) * BLOCK_SIZE
 			bmw.currentPosition += len(cutOfData)
 			if len(lastBlock) > 0 {
 				if addFileSize {

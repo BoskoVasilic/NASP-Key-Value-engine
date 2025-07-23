@@ -7,11 +7,11 @@ import (
 	"sync"
 )
 
-var globalBM *BlockManager
-var globalD GlobalDictionary
-var globalConfig *utils.Config
-var globalWal WriteAheadLog
-var globalCache Cache[string, Entry]
-var globalLsm *LSMTree
-var dicLock sync.RWMutex
-var walLock sync.Mutex
+var GlobalBM *BlockManager
+var GlobalD *GlobalDictionary
+var GlobalConfig *utils.Config
+var GlobalWal *WriteAheadLog
+var GlobalCache *Cache[string, Entry]
+var GlobalLsm *LSMTree
+var DicLock sync.RWMutex
+var WalLock sync.Mutex

@@ -15,6 +15,8 @@ import (
 	"github.com/djherbis/times"
 )
 
+var BLOCK_USABLE_SPACE = BLOCK_SIZE - RECORD_TYPE_SIZE - PAYLOAD_SIZE
+
 const (
 	CRC_SIZE        = 4
 	TIMESTAMP_SIZE  = 8
@@ -33,7 +35,6 @@ const (
 	SEGMENT_SIZE        = 8000 * 4 // user specified number of blocks in a segment get from config file
 	RECORD_TYPE_SIZE    = 1
 	PAYLOAD_SIZE        = 2
-	BLOCK_USABLE_SPACE  = BLOCK_SIZE - RECORD_TYPE_SIZE - PAYLOAD_SIZE
 	SEGMENT_CREATED     = 8
 	SEGMENT_VALID_CHECK = 9
 	SEGMENT_OFFSET      = 4
