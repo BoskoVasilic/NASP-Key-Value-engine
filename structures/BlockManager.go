@@ -8,7 +8,7 @@ import (
 	"os"
 )
 
-var BLOCK_SIZE = globalConfig.BlockManager.BlockSizeKB * 1000
+var BLOCK_SIZE = GlobalConfig.BlockManager.BlockSizeKB * 1000
 
 const (
 	BLOCK_HEADER_SIZE = 4
