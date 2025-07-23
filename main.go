@@ -7,10 +7,10 @@ import (
 )
 
 func initGlobals() {
-	globalConfig := utils.ReadConfig("config.json")
-	globalBM := structures.NewBlockManager(globalConfig.BlockManager.CacheMaxBlocks)
-	globalD := structures.NewGlobalDictionary("globalDictionary.bin", globalBM)
-	globalCache := structures.NewCache[string, []byte](globalConfig.Cache.MaxEntries)
+	structures.GlobalConfig = utils.ReadConfig("config.json")
+	structures.GlobalBM = structures.NewBlockManager(structures.GlobalConfig.BlockManager.CacheMaxBlocks)
+	structures.GlobalD = structures.NewGlobalDictionary("globalDictionary.bin", structures.GlobalBM)
+	structures.GlobalCache = structures.NewCache[string, []byte](structures.GlobalConfig.Cache.MaxEntries)
 }
 
 func main() {
