@@ -3,8 +3,9 @@ package structures
 import "KVengine/structures/auxiliary"
 
 type CacheEntry[K comparable, V any] struct {
-	key   K
-	value V
+	key     K
+	value   V
+	deleted bool
 }
 
 type Cache[K comparable, V any] struct {
@@ -20,7 +21,16 @@ func NewCache[K comparable, V any](maCashSize int) *Cache[K, V] {
 		maxSize: maCashSize,
 		dll:     auxiliary.NewDLList[CacheEntry[K, V]](),
 		hm:      make(map[K]*auxiliary.Node[CacheEntry[K, V]]),
-	  }
+	}
+}
+
+func (c *Cache[K, V]) Update(key K, value V) {
+	node, ok := c.hm[key]
+	if ok {
+		node.Value.value = value
+		node.Value.deleted = false
+		c.dll.MoveToFront(node)
+	}
 }
 
 func (c *Cache[K, V]) Put(key K, value V) {
@@ -29,7 +39,7 @@ func (c *Cache[K, V]) Put(key K, value V) {
 		c.dll.MoveToFront(node)
 		return
 	}
-	entry := &CacheEntry[K, V]{key: key, value: value}
+	entry := &CacheEntry[K, V]{key: key, value: value, deleted: false}
 
 	node = c.dll.PushFront(entry)
 	c.hm[key] = node
@@ -41,6 +51,15 @@ func (c *Cache[K, V]) Put(key K, value V) {
 	} else {
 		c.size++
 	}
+}
+
+func (c *Cache[K, V]) Delete(key K) {
+	node, ok := c.hm[key]
+	if !ok {
+		return
+	}
+	node.Value.deleted = true
+	c.dll.MoveToFront(node)
 }
 
 func (c *Cache[K, V]) Get(key K) (V, bool) {

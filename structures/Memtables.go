@@ -8,6 +8,7 @@ type Memtables struct {
 	n              int
 	maxEntry       int
 	tables         []Storage
+	states         []WriteStatus
 	activeIndex    int
 	flushChannel   chan bool
 	killSubroutine chan bool
@@ -22,6 +23,7 @@ func NewMemtables(n int, maxEntry int) *Memtables {
 		n,
 		maxEntry,
 		make([]Storage, n),
+		make([]WriteStatus, n),
 		0,
 		make(chan bool, n-1),
 		make(chan bool),
@@ -65,7 +67,13 @@ func (mt *Memtables) getActive() Storage {
 
 func (mt *Memtables) Put(key string, value []byte) {
 	mt.getActive().Put(key, value)
-	globalD.AddItem(NewEntry(key, value, false))
+	walLock.Lock()
+	globalWal.WriteToFile([]byte(key), value, false)
+	walLock.Unlock()
+	dicLock.Lock()
+	AddItmsString(&globalD, key)
+	dicLock.Unlock()
+	globalCache.Update(key, Entry{value: value, key: key})
 	mt.shiftIfFull()
 }
 
@@ -74,7 +82,28 @@ func (mt *Memtables) Get(key string) ([]byte, bool) {
 		ind := (mt.activeIndex - i + mt.n) % mt.n
 		value, found := mt.tables[ind].Get(key)
 		if found {
-			return value.value, found
+			if !value.deleted {
+				return value.value, true
+			} else {
+				return nil, false
+			}
+		}
+	}
+	value, found := globalCache.Get(key)
+	if found {
+		if !value.deleted {
+			return value.value, true
+		} else {
+			return nil, false
+		}
+	}
+
+	valPtr, found := globalLsm.ReadSStabels(key, &globalBM, &globalD)
+	if found {
+		if !valPtr.deleted {
+			return valPtr.value, true
+		} else {
+			return nil, false
 		}
 	}
 
@@ -83,16 +112,18 @@ func (mt *Memtables) Get(key string) ([]byte, bool) {
 
 func (mt *Memtables) Delete(key string) {
 	mt.getActive().Delete(key)
+	globalWal.WriteToFile([]byte(key), make([]byte, 0), true)
+	AddItmsString(&globalD, key)
+	globalCache.Delete(key)
 	mt.shiftIfFull()
 }
 
 func (mt *Memtables) shiftIfFull() {
 	if mt.getActive().GetSize() == mt.maxEntry {
+		mt.states[mt.activeIndex] = globalWal.GetCurrentStatus()
 		mt.activeIndex = (mt.activeIndex + 1) % mt.n
 		mt.flushChannel <- true
-		// clear Storage at activeIndex
-
-
+		mt.tables[mt.activeIndex] = mt.getActive().GetNew()
 	}
 }
 
@@ -124,6 +155,8 @@ func (mt *Memtables) flush(index int) {
 
 	lsm := NewLSMTree(mt.maxEntry, &globalBM)
 	lsm.AddLevel(path)
+	walLock.Lock()
+	globalWal.SetStatus(mt.states[index])
+	walLock.Unlock()
 	lsm.StartMerging(mergeAlg, &globalD, isOneFile, uint64(summary), mergeSize)
-
 }
