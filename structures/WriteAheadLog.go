@@ -434,6 +434,14 @@ func (wal *WriteAheadLog) GetWalElement() (*Entry, bool) {
 	}, true
 }
 
+func (wal *WriteAheadLog) GetCurrentStatus() WriteStatus {
+	status := WriteStatus{
+		filePath: wal.lastSegment.blockManagerWrap.filePath,
+		offset:   wal.lastSegment.blockManagerWrap.GetLastWrittenByteOffset(),
+	}
+	return status
+}
+
 func (wal *WriteAheadLog) GetElementTypeAndSize(offset int) (RecordType, int) {
 	_, data := wal.currentReadStatus.currentSegment.blockManagerWrap.ReadFromFile(wal.currentReadStatus.currentOffset, RECORD_TYPE_SIZE+PAYLOAD_SIZE)
 	elementType := data[0]
@@ -545,6 +553,8 @@ func (wal *WriteAheadLog) SetStatus(filePath string, offset int) {
 		}
 
 	}
+
+	wal.DeleteBelowLowWaterMark()
 }
 
 func (wal *WriteAheadLog) DeleteBelowLowWaterMark() {
