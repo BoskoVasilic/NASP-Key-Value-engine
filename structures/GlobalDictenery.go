@@ -4,6 +4,7 @@ import (
 	"KVengine/structures/auxiliary"
 	"KVengine/utils"
 	"fmt"
+	"os"
 )
 
 type GlobalDictionary struct {
@@ -83,6 +84,7 @@ func AddItemsWithNoCompresion[T any, H any](globalDictionary *GlobalDictionary, 
 }
 
 func AddItmsString(globalDictionary *GlobalDictionary, key string) {
+	defer globalDictionary.Flush()
 	entry := &Entry{
 		key:   key,
 		value: utils.Uint64ToBytes(globalDictionary.Size),
@@ -146,6 +148,9 @@ func (GlobalDictionary *GlobalDictionary) ConvertListToExportEntry(list *auxilia
 }
 func GetDicteneryFormFile(path string, bm *BlockManager) *GlobalDictionary {
 	// Create a new BlockManager with the specified file path
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return NewGlobalDictionary(path, bm)
+	}
 	file := NewBlockManagerWrap(path, bm)
 	start := 0
 	end := file.GetLastWrittenByteOffset()

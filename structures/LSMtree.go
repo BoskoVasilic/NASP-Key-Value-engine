@@ -7,6 +7,7 @@ import (
 	"time"
 )
 
+// tree_data hardcoded path to LSM tabel
 type LSMTree struct {
 	maxLevel     int
 	currentLevel int
@@ -562,6 +563,9 @@ func (lt *LSMTree) SerializeLSM(path string, bm *BlockManager) {
 	os.Rename(path1, path)
 }
 func DeserializeLSM(path string, bm *BlockManager) *LSMTree {
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return NewLSMTree(4, bm) //TODO get congfig
+	}
 	file := NewBlockManagerWrap(path, bm)
 	_, maxLevelBytes := file.ReadFromCurrentPosition(8)
 	maxLevel := utils.BytesToUint64(maxLevelBytes)
