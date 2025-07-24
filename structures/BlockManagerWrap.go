@@ -266,6 +266,7 @@ func (bmw *BlockManagerWrap) OverwriteDataInFile(data []byte) (int, error) {
 		}
 		bmw.currentPosition += len(data)
 		if bmw.writePosition < bmw.currentPosition {
+			bmw.InitializeWriteBuffer()
 			copy(bmw.writeBuffer[bmw.currentPosition-len(data):], data)
 		}
 
