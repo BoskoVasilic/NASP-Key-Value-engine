@@ -35,7 +35,7 @@ func NewSSTable[T any, H any](podaci *utils.Iterator[T, H, *Entry], NumberOfEnye
 		BlockManager:     BlocMenager,
 		globalDictionary: dictinery,
 		comprest:         isCompreset,
-		startPath:        "SSTabel" + time.Now().Format(time.RFC1123),
+		startPath:        "./data/SSTabel" + fmt.Sprintf("%d", time.Now().UnixMicro()),
 	}
 }
 
@@ -933,7 +933,7 @@ func ReadData(file *BlockManagerWrap) *Entry {
 	keySize, m := binary.Uvarint(buffer)
 	file.MoveFromCurrentPosition(int(m) - int(n))
 	n, buffer = file.ReadFromCurrentPosition(uvarMaxSize)
-
+	fmt.Println("Key Size:", keySize)
 	valueSize, m := binary.Uvarint(buffer)
 	file.MoveFromCurrentPosition(int(m) - int(n))
 	n, buffer = file.ReadFromCurrentPosition(int(keySize))
@@ -1130,6 +1130,12 @@ func RemoveSStabel(path string, bm *BlockManager) {
 		m, indexBlockPath := file.ReadFromCurrentPosition(int(indexBlockPathLength))
 		indexBlockPathString := string(indexBlockPath[:indexBlockPathLength])
 		os.Remove(indexBlockPathString) // Remove the index block file from the filesystem
+		m, merkleTreePathBytes := file.ReadFromCurrentPosition(uvarMaxSize)
+		merkleTreePathLength, n := binary.Uvarint(merkleTreePathBytes)
+		file.MoveFromCurrentPosition(int(n) - int(m))
+		m, merkleTreePath := file.ReadFromCurrentPosition(int(merkleTreePathLength))
+		merkleTreePathString := string(merkleTreePath[:merkleTreePathLength])
+		os.Remove(merkleTreePathString) // Remove the merkle tree file from the filesystem
 		os.Remove(path)                 // Remove the main SSTable file from the filesystem
 	}
 

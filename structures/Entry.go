@@ -41,7 +41,7 @@ func (ent *Entry) toBytes() []byte {
 	fmt.Println("Key length: ", len(ent.key))
 	fmt.Println("Key in bytes: ", []byte(ent.key))
 	if ent.deleted {
-		binary.AppendUvarint(buf, 0) // Value length is 0 for deleted entries
+		buf = binary.AppendUvarint(buf, 0) // Value length is 0 for deleted entries
 		buf = append(buf, []byte(ent.key)...)
 	} else {
 		buf = binary.AppendUvarint(buf, uint64(len(ent.value)+1))

@@ -26,6 +26,7 @@ type MemtableConfig struct {
 	StructureType string `json:"StructureType"` 
 	StructNum    int    `json:"structNum"` 
 	InstanceCount int    `json:"instanceCount"`
+	MaxEntry      int    `json:"maxEntry"` 
 }
 
 type CacheConfig struct {

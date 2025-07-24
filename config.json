@@ -4,17 +4,18 @@
   },
   "memtable": {
     "structureType": "skiplist",
-    "structNum": 2,
-    "instanceCount": 5
+    "structNum": 3,
+    "instanceCount": 5,
+    "maxEntry": 3
   },
   "sstable": {
     "summarySampling": 5,
-    "separateFiles": true,
-    "compressionEnabled": true
+    "separateFiles": false,
+    "compressionEnabled": false
   },
   "lsm-tree": {
-    "algorithmType": 1, 
-    "paramNumber": 3,
+    "algorithmType": 2, 
+    "paramNumber": 2,
     "maxLevel": 10
   },
   "cache": {

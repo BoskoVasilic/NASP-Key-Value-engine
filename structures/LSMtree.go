@@ -39,6 +39,7 @@ func (lt *LSMTree) AddLevel(path string) {
 	PathStringAdded := []*string{&path}
 	*level1 = append(PathStringAdded, *level1...)
 	lt.LevelsSize[0]++
+	lt.SerializeLSM(GlobalLSMTreeFile, lt.BlockMenager)
 }
 func (lt *LSMTree) Merge(first int, last int, level int, dictenery *GlobalDictionary, oneFile bool, summeryIndex uint64) string {
 	DataCompresedLists := make([]bool, 0)
@@ -112,6 +113,7 @@ func (lt *LSMTree) Merge(first int, last int, level int, dictenery *GlobalDictio
 						return
 					}
 					entry := ReadDataCompressed(mergeData.fileReader)
+					fmt.Println("Read entry:", entry)
 					mergeData.SetRecord(entry)
 					mergeData.Read++
 				}, MaxSizes[i-first])
@@ -210,7 +212,7 @@ func (lt *LSMTree) Merge(first int, last int, level int, dictenery *GlobalDictio
 			pq.Push(top)
 			return recordCopy, true
 		})
-		startpath := "SSTabel" + time.Now().Format(time.RFC1123)
+		startpath := "./data/SSTabel" + fmt.Sprintf("%d", time.Now().UnixMicro())
 		fmt.Println("Start path:", startpath)
 		sum := 0
 		for i := first; i < last; i++ {
@@ -246,7 +248,11 @@ func (lt *LSMTree) Merge(first int, last int, level int, dictenery *GlobalDictio
 					mergeData.Read++
 					return
 				}
+				fmt.Println("Reading data from file:", mergeData.fileReader.GetCurrentPosition())
+				fmt.Println("Max size:", mergeData.maxSize)
+
 				entry := ReadData(mergeData.fileReader)
+				fmt.Println("Read entry:", entry)
 				mergeData.SetRecord(entry)
 				mergeData.Read++
 			}, MaxSizes[i-first])
@@ -313,7 +319,7 @@ func (lt *LSMTree) Merge(first int, last int, level int, dictenery *GlobalDictio
 			pq.Push(top)
 			return recordCopy, true
 		})
-		startpath := "SSTabel" + time.Now().Format(time.RFC1123)
+		startpath := "./data/SSTabel" + fmt.Sprintf("%d", time.Now().UnixMicro())
 		fmt.Println("Start path:", startpath)
 		sum := 0
 		for i := first; i < last; i++ {
@@ -536,9 +542,7 @@ func (lt *LSMTree) SerializeLSM(path string, bm *BlockManager) {
 	// Return the levels of the LSM tree
 	path1 := path + "backup"
 	fmt.Println("Serializing LSMTree to path:", path)
-
 	file := NewBlockManagerWrap(path1, bm)
-	defer file.FlushBuffer(false)
 	file.WriteToFile(utils.Uint64ToBytes(uint64(lt.maxLevel)))
 	file.WriteToFile(utils.Uint64ToBytes(uint64(len(lt.Levels))))
 	for i := 0; i < len(lt.Levels); i++ {
@@ -560,6 +564,7 @@ func (lt *LSMTree) SerializeLSM(path string, bm *BlockManager) {
 			return
 		}
 	}
+	file.FlushBuffer(false)
 	os.Rename(path1, path)
 }
 func DeserializeLSM(path string, bm *BlockManager) *LSMTree {

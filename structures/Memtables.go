@@ -51,6 +51,7 @@ func NewMemtables(n int, maxEntry int) *Memtables {
 }
 
 func (mt *Memtables) flushThread() {
+	fmt.Println("Memtables flush thread started")
 	i := 0
 	for {
 		select {
@@ -63,6 +64,7 @@ func (mt *Memtables) flushThread() {
 			mt.confirmKill <- true
 			return
 		case <-mt.flushChannel:
+			fmt.Println("Flushing memtable", i)
 			mt.flush(i)
 			i = (i + 1) % mt.n
 		}
@@ -123,6 +125,7 @@ func (mt *Memtables) Get(key string) ([]byte, bool) {
 
 	valPtr, found := GlobalLsm.ReadSStabels(key, GlobalBM, GlobalD)
 	if found {
+		GlobalCache.Put(key, *valPtr)
 		if !valPtr.deleted {
 			return valPtr.value, true
 		} else {
@@ -144,7 +147,10 @@ func (mt *Memtables) Delete(key string) {
 }
 
 func (mt *Memtables) shiftIfFull() {
+	fmt.Println("Checking if memtable is full")
+	fmt.Println("Current size:", mt.getActive(), "Max entries:", mt.maxEntry)
 	if mt.getActive().GetSize() == mt.maxEntry {
+		fmt.Println("Memtable is full, shifting to next")
 		mt.states[mt.activeIndex] = GlobalWal.GetCurrentStatus()
 		mt.activeIndex = (mt.activeIndex + 1) % mt.n
 		mt.flushChannel <- true
@@ -167,21 +173,20 @@ func (mt *Memtables) flush(index int) {
 		SSTable := NewSSTable(iter, mt.tables[index].GetSize(), uint64(summary), isOneFile, GlobalBM, GlobalD, isCompressed)
 		path = SSTable.GenerateSSTabel()
 	} else if typeInt == 2 {
-		iter := iterAny.(*utils.Iterator[*Node, **Node, *Entry])
+		iter := iterAny.(*utils.Iterator[Node, *Node, *Entry])
 		SSTable := NewSSTable(iter, mt.tables[index].GetSize(), uint64(summary), isOneFile, GlobalBM, GlobalD, isCompressed)
 		path = SSTable.GenerateSSTabel()
 	} else if typeInt == 3 {
-		iter := iterAny.(*utils.Iterator[*[]*Entry, *int, *Entry])
+		iter := iterAny.(*utils.Iterator[[]*Entry, int, *Entry])
 		SSTable := NewSSTable(iter, mt.tables[index].GetSize(), uint64(summary), isOneFile, GlobalBM, GlobalD, isCompressed)
 		path = SSTable.GenerateSSTabel()
 	} else {
 		panic("Unknown type of Storage")
 	}
 
-	lsm := NewLSMTree(mt.maxEntry, GlobalBM)
-	lsm.AddLevel(path)
-	WalLock.Lock()
+	GlobalLsm.AddLevel(path)
+	/*WalLock.Lock()
 	GlobalWal.SetStatus(mt.states[index])
-	WalLock.Unlock()
-	lsm.StartMerging(mergeAlg, GlobalD, isOneFile, uint64(summary), mergeSize)
+	WalLock.Unlock()*/
+	GlobalLsm.StartMerging(mergeAlg, GlobalD, isOneFile, uint64(summary), mergeSize)
 }

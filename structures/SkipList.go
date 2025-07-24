@@ -122,7 +122,7 @@ func (s *SkipList) insert(key string, value []byte, tombstone bool) error {
 		s.head = headNode
 	}
 
-	if err != nil {
+	if err == nil {
 		s.size++
 	}
 	return err

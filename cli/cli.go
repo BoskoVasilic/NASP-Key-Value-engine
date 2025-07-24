@@ -74,13 +74,10 @@ func Run() {
 			}
 			key := parts[1]
 			fmt.Println("[DELETE]", "d"+key)
-			if _, found := structures.GlobalMemtables.Get("d" + key); !found {
-				fmt.Println("Key not found in database.")
-				continue
-			} else {
-				structures.GlobalMemtables.Delete("d" + key)
-				fmt.Println("Key found and deleted:", key)
-			}
+		
+			structures.GlobalMemtables.Delete("d" + key)
+			fmt.Println("Key found and deleted:", key)
+			
 
 		case "PREFIX_SCAN":
 			if len(parts) < 4 {
@@ -101,7 +98,7 @@ func Run() {
 				continue
 			}
 
-			structures.PrefixScan(prefix, pageNumber, numberOfEntities, structures.GlobalD, structures.GlobalBM)
+			structures.PrefixScan("d"+prefix, pageNumber, numberOfEntities, structures.GlobalD, structures.GlobalBM)
 
 		case "RANGE_SCAN":
 			if len(parts) < 5 {
@@ -123,7 +120,7 @@ func Run() {
 				continue
 			}
 
-			structures.RangeScan(minKey, maxKey, pageNumber, numberOfEntities, structures.GlobalD, structures.GlobalBM)
+			structures.RangeScan("d"+minKey, "d"+maxKey, pageNumber, numberOfEntities, structures.GlobalD, structures.GlobalBM)
 
 
 		case "PREFIX_ITERATE":
@@ -134,7 +131,7 @@ func Run() {
 			fmt.Println("[PREFIX_ITERATE]", parts[1], " -> use NEXT and STOP")
 
 			prefix := parts[1]
-			structures.PrefixItterator(prefix, structures.GlobalD, structures.GlobalBM)
+			structures.PrefixItterator("d"+prefix, structures.GlobalD, structures.GlobalBM)
 
 		case "RANGE_ITERATE":
 			if len(parts) < 3 {
@@ -145,7 +142,7 @@ func Run() {
 
 			minKey := parts[1]
 			maxKey := parts[2]
-			structures.RangeItterator(minKey, maxKey, structures.GlobalD, structures.GlobalBM)
+			structures.RangeItterator("d"+minKey, "d"+maxKey, structures.GlobalD, structures.GlobalBM)
 
 
 		// BloomFilter
@@ -167,7 +164,6 @@ func Run() {
 				continue
 			}
 			bloomFilter := structures.NewBloomFilterWithParams(expectedInsertions, falsePositiveRate)
-			// memtables
 			structures.GlobalMemtables.Put("b"+parts[1], bloomFilter.SerializeBloomF())
 
 		case "BF_DELETE":
