@@ -212,10 +212,10 @@ func (wal *WriteAheadLog) InitializeWriteAheadLog() {
 			lastSegment := wal.segmentPaths[len(wal.segmentPaths)-1-i]
 			offset, err := wal.ReadSegmentHeader(lastSegment)
 			if err != nil {
-				log.Fatalf("Error reading segment header: %v", err)
+				fmt.Printf("Error reading segment header: %v\n", err)
 			}
 			if offset < 0 {
-				log.Fatalf("Invalid segment header for segment %s: %v", lastSegment.segmentPath.segmentPath, err)
+				fmt.Printf("Invalid segment header for segment %s: %v\n", lastSegment.segmentPath.segmentPath, err)
 				wal.segmentPaths = append(wal.segmentPaths[:len(wal.segmentPaths)-1-i], wal.segmentPaths[len(wal.segmentPaths)-1-i:]...)
 				continue
 			} else if !passed {
@@ -263,7 +263,7 @@ func (wal *WriteAheadLog) ReadSegmentHeader(segment *WriteAheadLogSegment) (int,
 	if header[0] != 0b01110101 || header[1] != 0b01010101 || header[2] != 0b01101111 || header[3] != 0b01001111 ||
 		header[4] != 0b01110101 || header[5] != 0b11110000 || header[6] != 0b10011111 || header[7] != 0b10010001 ||
 		header[8] != 0b10111011 {
-		return -2, fmt.Errorf("invalid segment header signature") // change to just print not error
+		return -2, fmt.Errorf("invalid segment header signature")
 	}
 	createdTime := binary.LittleEndian.Uint64(header[SEGMENT_VALID_CHECK : SEGMENT_VALID_CHECK+SEGMENT_CREATED])
 	if createdTime != segment.segmentPath.created {
