@@ -188,8 +188,8 @@ func (mt *Memtables) flush(index int) {
 	}
 
 	GlobalLsm.AddLevel(path)
-	/*WalLock.Lock()
+	WalLock.Lock()
 	GlobalWal.SetStatus(mt.states[index])
-	WalLock.Unlock()*/
+	WalLock.Unlock()
 	GlobalLsm.StartMerging(mergeAlg, GlobalD, isOneFile, uint64(summary), mergeSize)
 }

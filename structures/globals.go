@@ -19,5 +19,8 @@ var GlobalWal *WriteAheadLog
 var GlobalCache *Cache[string, Entry]
 var GlobalLsm *LSMTree
 var GlobalMemtables *Memtables
+var GlobalTokenBucket *TokenBucket
 var DicLock sync.RWMutex
 var WalLock sync.Mutex
+var BlockManagerLock sync.Mutex
+var BlockCacheLock sync.Mutex

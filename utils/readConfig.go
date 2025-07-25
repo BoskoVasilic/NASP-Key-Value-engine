@@ -23,10 +23,10 @@ type SSTableConfig struct {
 }
 
 type MemtableConfig struct {
-	StructureType string `json:"StructureType"` 
-	StructNum    int    `json:"structNum"` 
+	StructureType string `json:"StructureType"`
+	StructNum     int    `json:"structNum"`
 	InstanceCount int    `json:"instanceCount"`
-	MaxEntry      int    `json:"maxEntry"` 
+	MaxEntry      int    `json:"maxEntry"`
 }
 
 type CacheConfig struct {
@@ -35,13 +35,13 @@ type CacheConfig struct {
 
 type LSMTreeConfig struct {
 	AlgorithmType int `json:"algorithmType"`
-	ParamNumber   int    `json:"paramNumber"`
-	MaxLevel      int    `json:"maxLevel"` // New field for max level
+	ParamNumber   int `json:"paramNumber"`
+	MaxLevel      int `json:"maxLevel"` // New field for max level
 }
 
 type TokenBucketConfig struct {
-	Tokens          int `json:"tokens"`
-	ResetIntervalMs int `json:"resetIntervalMs"`
+	Tokens           int `json:"tokens"`
+	ResetIntervalSec int `json:"resetIntervalSec"`
 }
 
 // High level config that combines all components
@@ -73,7 +73,7 @@ var defaultConfig = Config{
 	},
 	Memtable: MemtableConfig{
 		StructureType: "skiplist",
-		StructNum: 2,
+		StructNum:     2,
 		InstanceCount: 5,
 	},
 	Cache: CacheConfig{
@@ -84,15 +84,15 @@ var defaultConfig = Config{
 		ParamNumber:   3,
 	},
 	TokenBucketRateLim: TokenBucketConfig{
-		Tokens:          10,
-		ResetIntervalMs: 16,
+		Tokens:           10,
+		ResetIntervalSec: 30,
 	},
 }
 
 // Read user config from config file
 // If any validation fails, it will use the default config and return an error
 // Therefore it will always return a valid config just may not be the user-provided one
-func ReadConfig(filePath string) (*Config) {
+func ReadConfig(filePath string) *Config {
 	file, err := os.Open(filePath)
 	if err != nil {
 		fmt.Println("Error opening config file, using default config:", err)
@@ -109,15 +109,14 @@ func ReadConfig(filePath string) (*Config) {
 	}
 
 	if userConfig.Memtable.StructureType == "skiplist" {
-		userConfig.Memtable.StructNum = 2 
+		userConfig.Memtable.StructNum = 2
 	} else if userConfig.Memtable.StructureType == "hashmap" {
-		userConfig.Memtable.StructNum = 3 
+		userConfig.Memtable.StructNum = 3
 	} else if userConfig.Memtable.StructureType == "btree" {
-		userConfig.Memtable.StructNum = 1 
+		userConfig.Memtable.StructNum = 1
 	} else {
 		userConfig.Memtable.StructNum = defaultConfig.Memtable.StructNum // Use default if invalid
 	}
-
 
 	var errs []string
 
@@ -185,10 +184,10 @@ func ReadConfig(filePath string) (*Config) {
 			userConfig.TokenBucketRateLim.Tokens, defaultConfig.TokenBucketRateLim.Tokens))
 		userConfig.TokenBucketRateLim.Tokens = defaultConfig.TokenBucketRateLim.Tokens
 	}
-	if userConfig.TokenBucketRateLim.ResetIntervalMs <= 0 {
-		errs = append(errs, fmt.Sprintf("tokenBucketRateLimit.resetIntervalMs invalid (%d), defaulting to %d",
-			userConfig.TokenBucketRateLim.ResetIntervalMs, defaultConfig.TokenBucketRateLim.ResetIntervalMs))
-		userConfig.TokenBucketRateLim.ResetIntervalMs = defaultConfig.TokenBucketRateLim.ResetIntervalMs
+	if userConfig.TokenBucketRateLim.ResetIntervalSec <= 0 {
+		errs = append(errs, fmt.Sprintf("tokenBucketRateLimit.resetIntervalSec invalid (%d), defaulting to %d",
+			userConfig.TokenBucketRateLim.ResetIntervalSec, defaultConfig.TokenBucketRateLim.ResetIntervalSec))
+		userConfig.TokenBucketRateLim.ResetIntervalSec = defaultConfig.TokenBucketRateLim.ResetIntervalSec
 	}
 
 	fmt.Printf("Error(s) in config file:\n%s\n", stringJoin(errs, "\n"))

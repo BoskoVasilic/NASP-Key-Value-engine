@@ -27,6 +27,6 @@
   },
   "tokenBucketRateLimit": {
     "tokens": 10,
-    "resetIntervalMs": 16
+    "resetIntervalSec": 30
   }
 }

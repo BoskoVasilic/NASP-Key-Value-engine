@@ -208,15 +208,20 @@ func (wal *WriteAheadLog) InitializeWriteAheadLog() {
 		wal.currentReadStatus.currentSegment = initialSegment
 	} else {
 		passed := false
+		numOfPaths := len(wal.segmentPaths)
 		for i := range wal.segmentPaths {
-			lastSegment := wal.segmentPaths[len(wal.segmentPaths)-1-i]
+			lastSegment := wal.segmentPaths[numOfPaths-1-i]
 			offset, err := wal.ReadSegmentHeader(lastSegment)
 			if err != nil {
 				fmt.Printf("Error reading segment header: %v\n", err)
 			}
 			if offset < 0 {
 				fmt.Printf("Invalid segment header for segment %s: %v\n", lastSegment.segmentPath.segmentPath, err)
-				wal.segmentPaths = append(wal.segmentPaths[:len(wal.segmentPaths)-1-i], wal.segmentPaths[len(wal.segmentPaths)-1-i:]...)
+				if i > 0 {
+					wal.segmentPaths = append(wal.segmentPaths[:numOfPaths-1-i], wal.segmentPaths[numOfPaths-i:]...)
+				} else {
+					wal.segmentPaths = wal.segmentPaths[:numOfPaths-1-i]
+				}
 				continue
 			} else if !passed {
 				wal.lastSegment = lastSegment
