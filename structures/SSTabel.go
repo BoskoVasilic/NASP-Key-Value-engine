@@ -827,6 +827,10 @@ func ReadDataCompressed(file *BlockManagerWrap) *ExportEntry {
 		tombstone: valueSize == 0,
 		time:      int64(timestamp),
 	}
+	if !ExportEntry.CompareHashes(CRU) {
+		fmt.Println("Data integrity check failed for key:", ExportEntry.key)
+		return nil
+	}
 	return ExportEntry
 }
 func ReadIndexSummery(file *BlockManagerWrap, key string) (uint64, bool) {
@@ -947,8 +951,22 @@ func ReadData(file *BlockManagerWrap) *Entry {
 	file.MoveFromCurrentPosition(int(m) - int(n))
 	// Create an Entry object with the read data
 	entry := NewEntryWithTime(key, data, int64(timestamp), valueSize == 0)
+	if !entry.CompareHashes(CRU) {
+		fmt.Println("Data integrity check failed for key:", entry.GetKey())
+		return nil
+	}
 	return entry
 }
+
+func CalculateCRUFromBytes(data []byte) uint64 {
+	if len(data) < 8 {
+		return 0 // Not enough data to calculate CRU
+	}
+	cruBytes := data[:8] // Assuming CRU is stored in the first 8 bytes
+	cru := utils.BytesToUint64(cruBytes)
+	return cru
+}
+
 func GetDataFile(data_path string, bm *BlockManager) *BlockManagerWrap {
 	file := NewBlockManagerWrap(data_path, bm)
 	// Check if the file exists

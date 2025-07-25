@@ -4,7 +4,6 @@ import (
 	"KVengine/cli"
 	"KVengine/structures"
 	"KVengine/utils"
-	"fmt"
 )
 
 func initGlobals() {
@@ -18,23 +17,23 @@ func initGlobals() {
 	structures.GlobalMemtables = structures.NewMemtables(structures.GlobalConfig.Memtable.InstanceCount, structures.GlobalConfig.Memtable.MaxEntry)
 }
 
-func loadFromWal() {
-	status := true
-	for status {
-		fmt.Println("Loading entry from WAL:")
-		entry, status := structures.GlobalWal.GetWalElementByElement()
-		fmt.Println(entry, status)
-		if status {
-			structures.GlobalMemtables.PutWithoutWal(entry.GetKey(), entry.GetValue())
-		} else {
-			break
-		}
-	}
-}
+// func loadFromWal() {
+// 	status := true
+// 	for status {
+// 		fmt.Println("Loading entry from WAL:")
+// 		entry, status := structures.GlobalWal.GetWalElementByElement()
+// 		fmt.Println(entry, status)
+// 		if status {
+// 			structures.GlobalMemtables.PutWithoutWal(entry.GetKey(), entry.GetValue())
+// 		} else {
+// 			break
+// 		}
+// 	}
+// }
 
 func main() {
 	initGlobals()
-	loadFromWal()
+	// loadFromWal()
 	structures.GlobalMemtables.Init()
 	cli.Run()
 }
