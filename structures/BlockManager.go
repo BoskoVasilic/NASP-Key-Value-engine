@@ -68,10 +68,7 @@ func (bm *BlockManager) ReadBlock(filePath string, blockNumber int) ([]byte, err
 
 	data := make([]byte, BLOCK_SIZE)
 
-	_, err = file.Read(data)
-	if err != nil {
-		log.Printf("Error reading file: %v", err)
-	}
+	file.Read(data)
 
 	closeFile(file)
 	BlockManagerLock.Unlock()

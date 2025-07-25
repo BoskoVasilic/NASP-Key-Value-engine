@@ -54,7 +54,6 @@ func (mt *Memtables) Init() {
 }
 
 func (mt *Memtables) flushThread() {
-	fmt.Println("Memtables flush thread started")
 	i := 0
 	for {
 		select {
@@ -67,7 +66,6 @@ func (mt *Memtables) flushThread() {
 			mt.confirmKill <- true
 			return
 		case <-mt.flushChannel:
-			fmt.Println("Flushing memtable", i)
 			mt.flush(i)
 			i = (i + 1) % mt.n
 		}
@@ -86,8 +84,14 @@ func (mt *Memtables) getActive() Storage {
 	return mt.tables[mt.activeIndex]
 }
 
-func (mt *Memtables) Put(key string, value []byte) {
-	fmt.Println("Putting key:", key, "value:", string(value), "into memtable")
+func (mt *Memtables) Put(key string, value []byte, privilege ...bool) {
+	if !(len(privilege) > 0 && privilege[0]) {
+		available := GlobalTokenBucket.CheckAvailability()
+		if !available {
+			fmt.Println("Access limit exceeded!")
+			return
+		}
+	}
 	mt.getActive().Put(key, value)
 	WalLock.Lock()
 	GlobalWal.WriteToFile([]byte(key), value, false)
@@ -98,14 +102,20 @@ func (mt *Memtables) Put(key string, value []byte) {
 }
 
 func (mt *Memtables) PutWithoutWal(key string, value []byte) {
-	fmt.Println("Putting key:", key, "value:", string(value), "into memtable without WAL")
 	mt.getActive().Put(key, value)
 	AddItmsString(GlobalD, key)
 	GlobalCache.Update(key, Entry{value: value, key: key})
 	mt.shiftIfFull()
 }
 
-func (mt *Memtables) Get(key string) ([]byte, bool) {
+func (mt *Memtables) Get(key string, privilege ...bool) ([]byte, bool) {
+	if !(len(privilege) > 0 && privilege[0]) {
+		available := GlobalTokenBucket.CheckAvailability()
+		if !available {
+			fmt.Println("Access limit exceeded!")
+			return nil, false
+		}
+	}
 	for i := 0; i < mt.n; i++ {
 		ind := (mt.activeIndex - i + mt.n) % mt.n
 		value, found := mt.tables[ind].Get(key)
@@ -139,7 +149,14 @@ func (mt *Memtables) Get(key string) ([]byte, bool) {
 	return nil, false
 }
 
-func (mt *Memtables) Delete(key string) {
+func (mt *Memtables) Delete(key string, privilege ...bool) {
+	if !(len(privilege) > 0 && privilege[0]) {
+		available := GlobalTokenBucket.CheckAvailability()
+		if !available {
+			fmt.Println("Access limit exceeded!")
+			return
+		}
+	}
 	mt.getActive().Delete(key)
 	WalLock.Lock()
 	GlobalWal.WriteToFile([]byte(key), make([]byte, 1), true)
@@ -150,10 +167,7 @@ func (mt *Memtables) Delete(key string) {
 }
 
 func (mt *Memtables) shiftIfFull() {
-	fmt.Println("Checking if memtable is full")
-	fmt.Println("Current size:", mt.getActive(), "Max entries:", mt.maxEntry)
 	if mt.getActive().GetSize() == mt.maxEntry {
-		fmt.Println("Memtable is full, shifting to next")
 		mt.states[mt.activeIndex] = GlobalWal.GetCurrentStatus()
 		mt.activeIndex = (mt.activeIndex + 1) % mt.n
 		mt.flushChannel <- true

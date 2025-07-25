@@ -1,8 +1,16 @@
 package structures
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 func RangeScan(first, last string, PageNumber, NumberOffEntytyinPage int, dictionary *GlobalDictionary, bm *BlockManager) {
+	available := GlobalTokenBucket.CheckAvailability()
+	if !available {
+		fmt.Println("Access limit exceeded!")
+		return
+	}
 	DicLock.RLock()
 	itter := dictionary.SkipList.RangeScan(first, last)
 	for i := 0; i < (PageNumber-1)*NumberOffEntytyinPage; i++ {
@@ -10,7 +18,7 @@ func RangeScan(first, last string, PageNumber, NumberOffEntytyinPage int, dictio
 		if !ok {
 			return
 		}
-		_ , ok = GlobalMemtables.Get(Value.GetKey())
+		_, ok = GlobalMemtables.Get(Value.GetKey(), true)
 		if !ok {
 			i--
 		}
@@ -21,14 +29,14 @@ func RangeScan(first, last string, PageNumber, NumberOffEntytyinPage int, dictio
 			return
 		}
 		key := entry.GetKey()
-		data, ok := GlobalMemtables.Get(key)
+		data, ok := GlobalMemtables.Get(key, true)
 		if !ok {
 			i--
 		}
 		if data == nil {
 			continue
 		}
-		fmt.Println("Key:", key, "Value:", data)
+		fmt.Println("Key:", key[1:], "Value:", string(data))
 	}
 	DicLock.RUnlock()
 }
@@ -38,12 +46,10 @@ func PrefixScan(prefix string, PageNumber, NumberOffEntytyinPage int, dictionary
 	RangeScan(first, last, PageNumber, NumberOffEntytyinPage, dictionary, bm)
 }
 func RangeItterator(first, last string, dictionary *GlobalDictionary, bm *BlockManager) {
-	DicLock.RLock()
 	itter := dictionary.SkipList.RangeScan(first, last)
 	entry, ok := itter.Next()
-	fmt.Println("If you want new entry tipe Next if you are finished type Exit")
 	if !ok {
-		DicLock.RUnlock()
+		fmt.Println("No entries")
 		return
 	}
 	data, ok := GlobalMemtables.Get(entry.GetKey())
@@ -51,36 +57,40 @@ func RangeItterator(first, last string, dictionary *GlobalDictionary, bm *BlockM
 	for !ok {
 		entry, ok = itter.Next()
 		if !ok {
-			DicLock.RUnlock()
 			fmt.Println("No more entries")
 			return
 		}
-		data, ok = GlobalMemtables.Get(entry.GetKey())
+		data, ok = GlobalMemtables.Get(entry.GetKey(), true)
 	}
 	for {
-		fmt.Println("Key:", entry.GetKey(), "Value:", data)
+		fmt.Println("Key:", entry.GetKey()[1:], "Value:", string(data))
 		entry, ok = itter.Next()
 		if !ok {
+			fmt.Println("No more entries")
 			break
 		}
 		data, ok = GlobalMemtables.Get(entry.GetKey())
 		for !ok {
 			entry, ok = itter.Next()
 			if !ok {
-				DicLock.RUnlock()
 				fmt.Println("No more entries")
 				return
 			}
-			data, ok = GlobalMemtables.Get(entry.GetKey())
+			data, ok = GlobalMemtables.Get(entry.GetKey(), true)
 		}
-		fmt.Scanln(&addeed)
-		if addeed == "Next" {
-			continue
-		} else {
-			break
+		for {
+			fmt.Print("[ITERATOR]> ")
+			fmt.Scanln(&addeed)
+			if strings.ToUpper(addeed) == "NEXT" {
+				break
+			} else if strings.ToUpper(addeed) == "STOP" {
+				return
+			} else {
+				fmt.Println("Invalid command. Type 'NEXT' to continue or 'STOP' to exit.")
+				continue
+			}
 		}
 	}
-	DicLock.RUnlock()
 }
 func PrefixItterator(prefix string, dictionary *GlobalDictionary, bm *BlockManager) {
 	first := prefix

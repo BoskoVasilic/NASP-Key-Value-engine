@@ -58,7 +58,7 @@ func Run() {
 				continue
 			}
 			key := parts[1]
-			fmt.Println("[GET]", "d"+key)
+			fmt.Println("[GET]", key)
 			val, found := structures.GlobalMemtables.Get("d" + key)
 			if !found {
 				fmt.Println("Key not found in database.")
@@ -73,7 +73,7 @@ func Run() {
 				continue
 			}
 			key := parts[1]
-			fmt.Println("[DELETE]", "d"+key)
+			fmt.Println("[DELETE]", key)
 
 			structures.GlobalMemtables.Delete("d" + key)
 			fmt.Println("Key found and deleted:", key)

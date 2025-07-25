@@ -49,10 +49,8 @@ func NewSkipList() *SkipList {
 }
 
 func (s *SkipList) findPath(key string) (bool, []*Node, error) {
-	fmt.Println("Finding " + key)
 	path := make([]*Node, s.currentHeight+1)
 	currentNode := s.head
-	fmt.Println(s)
 	height := 0
 	for currentNode.data.key != key {
 		if currentNode.next != nil && currentNode.next.data.key <= key {
@@ -130,8 +128,6 @@ func (s *SkipList) insert(key string, value []byte, tombstone bool) error {
 func (s *SkipList) getEntry(key string) (Entry, bool, error) {
 	var zero Entry
 	found, path, err := s.findPath(key)
-	fmt.Println("found:", found, "path:", path, len(path), "currentHeight:",
-		path[s.currentHeight].data.value, "deleted:", path[s.currentHeight].data.deleted)
 	if found {
 		return *path[s.currentHeight].data, true, err
 	}

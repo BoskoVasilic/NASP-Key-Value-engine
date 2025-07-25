@@ -187,11 +187,6 @@ func (wal *WriteAheadLog) GetSegmentPaths() error {
 		return wal.segmentPaths[i].segmentPath.created < wal.segmentPaths[j].segmentPath.created
 	})
 
-	fmt.Println("Segment Paths:")
-	for _, segment := range wal.segmentPaths {
-		fmt.Printf("Path: %s, Created: %d\n", segment.segmentPath.segmentPath, segment.segmentPath.created)
-	}
-
 	return err
 }
 
@@ -493,7 +488,6 @@ func (wal *WriteAheadLog) GetElementTypeAndSize(offset int) (RecordType, int) {
 
 func (wal *WriteAheadLog) GetWalElementByElement() (*Entry, bool) {
 	if wal.currentReadStatus.endReached {
-		fmt.Println("End of WAL reached.")
 		return nil, false
 	}
 	if wal.currentReadStatus.currentOffset == -1 {
@@ -511,12 +505,10 @@ func (wal *WriteAheadLog) GetWalElementByElement() (*Entry, bool) {
 	element, check := wal.GetWalElement()
 
 	for !check && !wal.currentReadStatus.endReached {
-		fmt.Println("CRC32 checksum failed. Trying next element...")
 		element, check = wal.GetWalElement()
 	}
 
 	if wal.currentReadStatus.endReached {
-		fmt.Println("End of WAL reached.")
 		return nil, false
 	}
 
@@ -579,8 +571,6 @@ func (wal *WriteAheadLog) DeleteBelowLowWaterMark() {
 			}
 			return
 		}
-
-		fmt.Printf("File '%s' deleted successfully.\n", segment.segmentPath.segmentPath)
 	}
 }
 

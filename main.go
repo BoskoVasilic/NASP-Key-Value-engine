@@ -15,25 +15,26 @@ func initGlobals() {
 	structures.GlobalCache = structures.NewCache[string, structures.Entry](structures.GlobalConfig.Cache.MaxEntries)
 	structures.GlobalLsm = structures.DeserializeLSM(structures.GlobalLSMTreeFile, structures.GlobalBM)
 	structures.GlobalMemtables = structures.NewMemtables(structures.GlobalConfig.Memtable.InstanceCount, structures.GlobalConfig.Memtable.MaxEntry)
+	structures.GlobalTokenBucket = structures.NewTokenBucket()
+	structures.GlobalTokenBucket.Initialize()
 }
 
-// func loadFromWal() {
-// 	status := true
-// 	for status {
-// 		fmt.Println("Loading entry from WAL:")
-// 		entry, status := structures.GlobalWal.GetWalElementByElement()
-// 		fmt.Println(entry, status)
-// 		if status {
-// 			structures.GlobalMemtables.PutWithoutWal(entry.GetKey(), entry.GetValue())
-// 		} else {
-// 			break
-// 		}
-// 	}
-// }
+func loadFromWal() {
+	status := true
+	for status {
+		entry, status := structures.GlobalWal.GetWalElementByElement()
+		if status {
+			structures.GlobalMemtables.PutWithoutWal(entry.GetKey(), entry.GetValue())
+		} else {
+			break
+		}
+	}
+}
 
 func main() {
 	initGlobals()
-	// loadFromWal()
+	loadFromWal()
 	structures.GlobalMemtables.Init()
 	cli.Run()
+	structures.GlobalMemtables.Destroy()
 }

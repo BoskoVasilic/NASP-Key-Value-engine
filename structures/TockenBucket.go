@@ -42,7 +42,7 @@ func (tb *TokenBucket) Reset() {
 
 func (tb *TokenBucket) CheckAvailability() bool {
 	tb.Reset()
-	if tb.tokensAvailable >= 0 {
+	if tb.tokensAvailable > 0 {
 		tb.tokensAvailable -= 1
 		tb.SaveBucketState()
 		return true
@@ -51,7 +51,10 @@ func (tb *TokenBucket) CheckAvailability() bool {
 }
 
 func (tb *TokenBucket) GetBucketState() (int, int64) {
-	data, _ := GlobalMemtables.Get("ttoken_bucket")
+	data, exists := GlobalMemtables.Get("ttoken_bucket", true)
+	if !exists {
+		return MAX_TOKENS, int64(RESET_INTERVAL)
+	}
 	tb.tokensAvailable = int(binary.LittleEndian.Uint32(data[:TOKENS_SIZE]))
 	tb.lastResetTime = int64(binary.LittleEndian.Uint64(data[TOKENS_SIZE : RESET_TIME_SIZE+TOKENS_SIZE]))
 	return tb.tokensAvailable, tb.lastResetTime
@@ -61,5 +64,5 @@ func (tb *TokenBucket) SaveBucketState() {
 	data := make([]byte, TOKENS_SIZE+RESET_TIME_SIZE)
 	binary.LittleEndian.PutUint32(data[:TOKENS_SIZE], uint32(tb.tokensAvailable))
 	binary.LittleEndian.PutUint64(data[TOKENS_SIZE:], uint64(tb.lastResetTime))
-	GlobalMemtables.Put("ttoken_bucket", data)
+	GlobalMemtables.Put("ttoken_bucket", data, true)
 }

@@ -3,7 +3,6 @@ package structures
 import (
 	"KVengine/structures/auxiliary"
 	"KVengine/utils"
-	"fmt"
 	"os"
 )
 
@@ -169,7 +168,6 @@ func GetDicteneryFormFile(path string, bm *BlockManager) *GlobalDictionary {
 	file := NewBlockManagerWrap(path, bm)
 	start := 0
 	end := file.GetLastWrittenByteOffset()
-	fmt.Println("Reading dictionary from file:", path, "Start:", start, "End:", end)
 	dictionary := NewGlobalDictionary(path, bm)
 	for start < end {
 		_, keySizeBytes := file.ReadFromCurrentPosition(8)
@@ -179,7 +177,6 @@ func GetDicteneryFormFile(path string, bm *BlockManager) *GlobalDictionary {
 		_, keyComprestedBytes := file.ReadFromCurrentPosition(8)
 		keyComprested := utils.BytesToUint64(keyComprestedBytes)
 		entry := NewEntry(key, utils.Uint64ToBytes(keyComprested), false)
-		fmt.Println("Adding entry to dictionary:", entry.key, "with value size:", len(entry.value), "at position:", start)
 		dictionary.SkipList.Put(entry.key, entry.value)
 		dictionary.Size++
 		start = start + 8 + int(keySize) + 8 // Move to the next entry

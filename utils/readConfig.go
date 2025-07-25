@@ -158,6 +158,7 @@ func ReadConfig(filePath string) *Config {
 			userConfig.Memtable.InstanceCount, defaultConfig.Memtable.InstanceCount))
 		userConfig.Memtable.InstanceCount = defaultConfig.Memtable.InstanceCount
 	}
+	userConfig.Memtable.MaxEntry++
 
 	// Validate Cache
 	if userConfig.Cache.MaxEntries <= 0 {
@@ -190,7 +191,9 @@ func ReadConfig(filePath string) *Config {
 		userConfig.TokenBucketRateLim.ResetIntervalSec = defaultConfig.TokenBucketRateLim.ResetIntervalSec
 	}
 
-	fmt.Printf("Error(s) in config file:\n%s\n", stringJoin(errs, "\n"))
+	if len(errs) > 0 {
+		fmt.Printf("Error(s) in config file:\n%s\n", stringJoin(errs, "\n"))
+	}
 
 	return &userConfig
 }
