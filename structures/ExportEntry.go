@@ -1,9 +1,10 @@
 package structures
 
 import (
-	"KVengine/hash"
 	"encoding/binary"
 	"time"
+	"crypto/sha512"
+	utils "KVengine/utils"
 )
 
 type ExportEntry struct {
@@ -51,9 +52,10 @@ func (ent *ExportEntry) toBytes() []byte {
 		buf = append(buf, ent.value...)
 	}
 	buf = binary.AppendUvarint(buf, uint64(ent.time)) // Append the time as a varint
-	hash := hash.CreateHashFunctions(42)[0]
-	CRU := hash.Hash(buf)
-	CRU = CRU % 1000000007 // Modulo operation to fit the hash into a smaller range
+	// hash := hash.CreateHashFunctions(42)[0]
+	// CRU := hash.Hash(buf)
+	hashBytes := sha512.Sum512(buf)
+	CRU := utils.BytesToUint64(hashBytes[:]) // Modulo operation to fit the hash into a smaller range
 	bufCru := make([]byte, 0)
 	bufCru = binary.AppendUvarint(bufCru, CRU) // Append the length of the CRU hash
 	// Append the CRU hash as a varint
@@ -78,6 +80,20 @@ func (ent *ExportEntry) GetSize() uint64 {
 	buf = binary.AppendUvarint(buf, uint64(value_len+1))
 	return uint64(len(buf) + value_len) //TODO dodati len od CRU i TimeStamp
 }
-func comper(a, b *ExportEntry) bool {
-	return a.key < b.key
+
+func (ent *ExportEntry) CompareHashes(b uint64) bool {
+	buf := make([]byte, 0)
+	buf = binary.AppendUvarint(buf, ent.key) // Append the key as a varint)
+	if ent.tombstone {
+		buf = binary.AppendUvarint(buf, 0) // Value length is 0 for deleted entries
+	} else {
+		buf = binary.AppendUvarint(buf, uint64(len(ent.value)+1))
+		buf = append(buf, ent.value...)
+	}
+	buf = binary.AppendUvarint(buf, uint64(ent.time)) // Append the time as a varint
+	// hash := hash.CreateHashFunctions(42)[0]
+	// CRU := hash.Hash(buf)
+	hashBytes := sha512.Sum512(buf)
+	CRU := utils.BytesToUint64(hashBytes[:])
+	return CRU == b
 }

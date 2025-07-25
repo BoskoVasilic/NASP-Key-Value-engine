@@ -372,6 +372,7 @@ func Run() {
 				continue
 			}
 			ok, ind := structures.GlobalLsm.ValidateTable(level, index)
+			fmt.Println(ok, ind)
 			if ok {
 				fmt.Printf("Storage at level %d, index %d is valid.\n", level, index)
 			} else {
