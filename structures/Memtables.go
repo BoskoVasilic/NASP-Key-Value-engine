@@ -45,9 +45,12 @@ func NewMemtables(n int, maxEntry int) *Memtables {
 		make(chan bool),
 		make(chan bool),
 	}
-	go mt.flushThread()
 
 	return &mt
+}
+
+func (mt *Memtables) Init() {
+	go mt.flushThread()
 }
 
 func (mt *Memtables) flushThread() {

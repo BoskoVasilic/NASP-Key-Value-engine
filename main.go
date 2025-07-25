@@ -35,5 +35,6 @@ func loadFromWal() {
 func main() {
 	initGlobals()
 	loadFromWal()
+	structures.GlobalMemtables.Init()
 	cli.Run()
 }

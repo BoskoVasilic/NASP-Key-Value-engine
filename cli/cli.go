@@ -5,8 +5,8 @@ import (
 	"bufio"
 	"fmt"
 	"os"
-	"strings"
 	"strconv"
+	"strings"
 )
 
 // Iterator for PREFIX_ITERATE and RANGE_ITERATE
@@ -59,7 +59,7 @@ func Run() {
 			}
 			key := parts[1]
 			fmt.Println("[GET]", "d"+key)
-			val, found := structures.GlobalMemtables.Get("d"+key)
+			val, found := structures.GlobalMemtables.Get("d" + key)
 			if !found {
 				fmt.Println("Key not found in database.")
 				continue
@@ -74,10 +74,9 @@ func Run() {
 			}
 			key := parts[1]
 			fmt.Println("[DELETE]", "d"+key)
-		
+
 			structures.GlobalMemtables.Delete("d" + key)
 			fmt.Println("Key found and deleted:", key)
-			
 
 		case "PREFIX_SCAN":
 			if len(parts) < 4 {
@@ -122,7 +121,6 @@ func Run() {
 
 			structures.RangeScan("d"+minKey, "d"+maxKey, pageNumber, numberOfEntities, structures.GlobalD, structures.GlobalBM)
 
-
 		case "PREFIX_ITERATE":
 			if len(parts) < 2 {
 				fmt.Println("Usage: PREFIX_ITERATE prefix")
@@ -143,7 +141,6 @@ func Run() {
 			minKey := parts[1]
 			maxKey := parts[2]
 			structures.RangeItterator("d"+minKey, "d"+maxKey, structures.GlobalD, structures.GlobalBM)
-
 
 		// BloomFilter
 		case "BF_CREATE":
@@ -174,7 +171,6 @@ func Run() {
 			fmt.Println("[BloomFilter Delete]", parts[1])
 
 			structures.GlobalMemtables.Delete("b" + parts[1])
-
 
 		case "BF_PUT":
 			if len(parts) < 3 {
@@ -228,7 +224,6 @@ func Run() {
 			}
 			cms := structures.NewCountMinSketch(uint32(depth), uint32(width))
 			structures.GlobalMemtables.Put("c"+parts[1], cms.Serialize())
-			
 
 		case "CMS_DELETE":
 			if len(parts) < 2 {
@@ -236,7 +231,7 @@ func Run() {
 				continue
 			}
 			fmt.Println("[CountMinSketch Delete]", parts[1])
-			
+
 			structures.GlobalMemtables.Delete("c" + parts[1])
 
 		case "CMS_ADD":
@@ -245,7 +240,7 @@ func Run() {
 				continue
 			}
 			fmt.Println("[CountMinSketch Add]", parts[1], parts[2])
-			
+
 			cmsData, found := structures.GlobalMemtables.Get("c" + parts[1])
 			if !found {
 				fmt.Println("CountMinSketch not found")
@@ -255,14 +250,13 @@ func Run() {
 			cms.Add(parts[2])
 			structures.GlobalMemtables.Put("c"+parts[1], cms.Serialize())
 
-
 		case "CMS_CHECK":
 			if len(parts) < 3 {
 				fmt.Println("Usage: CMS_CHECK key element")
 				continue
 			}
 			fmt.Println("[CountMinSketch Check]", parts[1], parts[2])
-			
+
 			cmsData, found := structures.GlobalMemtables.Get("c" + parts[1])
 			if !found {
 				fmt.Println("CountMinSketch not found")
@@ -281,14 +275,13 @@ func Run() {
 			fmt.Println("[HyperLogLog Create]", parts[1])
 
 			p, err := strconv.ParseUint(parts[2], 10, 8)
-			if err != nil {	
+			if err != nil {
 				fmt.Println("Invalid parameter for HLL_CREATE. p should be an integer.")
-				continue	
+				continue
 			}
 			p8 := uint8(p)
 			hll := structures.NewHyperLogLog(p8) // Default p value
 			structures.GlobalMemtables.Put("h"+parts[1], hll.SerializeHLL())
-
 
 		case "HLL_DELETE":
 			if len(parts) < 2 {
@@ -329,7 +322,6 @@ func Run() {
 			count := hll.Estimate()
 			fmt.Printf("Estimated count for '%s': %.0f\n", parts[1], count)
 
-
 		// SimHash
 		case "SIMHASH_SAVE":
 			if len(parts) < 3 {
@@ -361,6 +353,31 @@ func Run() {
 			dist := structures.CalculateHammingDistance(hash1, hash2)
 			fmt.Printf("Hamming distance between '%s' and '%s': %d\n", parts[1], parts[2], dist)
 
+		case "STORAGE_LOCATIONS":
+			structures.GlobalLsm.Print()
+
+		case "STORAGE_VALIDATE":
+			if len(parts) < 3 {
+				fmt.Println("Usage: STORAGE_VALIDATE level index")
+				continue
+			}
+			level, err := strconv.Atoi(parts[1])
+			if err != nil {
+				fmt.Println("Invalid level. Level should be an integer.")
+				continue
+			}
+			index, err := strconv.Atoi(parts[2])
+			if err != nil {
+				fmt.Println("Invalid index. Index should be an integer.")
+				continue
+			}
+			ok, ind := structures.GlobalLsm.ValidateTable(level, index)
+			if ok {
+				fmt.Printf("Storage at level %d, index %d is valid.\n", level, index)
+			} else {
+				fmt.Printf("Storage at level %d, index %d is invalid. Error at index %d.\n", level, index, ind)
+			}
+
 		case "EXIT", "QUIT":
 			fmt.Println("Exiting CLI. Goodbye!")
 			return
@@ -380,9 +397,12 @@ func printCommands() {
 	fmt.Println("PREFIX_SCAN prefix pageNumber pageSize")
 	fmt.Println("RANGE_SCAN minKey maxKey pageNumber pageSize")
 	fmt.Println("------------------------------")
-	fmt.Println("PREFIX_ITERATE prefix  	(then use NEXT/STOP)")
+	fmt.Println("PREFIX_ITERATE prefix  		(then use NEXT/STOP)")
 	fmt.Println("RANGE_ITERATE minKey maxKey  	(then use NEXT/STOP)")
 	fmt.Println("NEXT / STOP")
+	fmt.Println("------------------------------")
+	fmt.Println("STORAGE_LOCATIONS 				(prints storage locations)")
+	fmt.Println("STORAGE_VALIDATE level index 	(validates storage for level and index)")
 	fmt.Println("------------------------------")
 	fmt.Println("Work with Probabilistic Structures:")
 	fmt.Println("BF=BloomFilter, CMS=CountMinSketch, HLL=HyperLogLog, SIMHASH=SimHash")

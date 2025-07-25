@@ -1240,10 +1240,10 @@ func ValidateSStabel(path string, bm *BlockManager) (bool, int) {
 		entry := ReadData(file3)
 		merkle2.Put(entry.toBytes())
 	}
+	merkle2.build()
 	isOk, idx := CompareTreesWithIndex(merkleTree, merkle2)
 	if !isOk {
 		return false, idx
 	}
-	fmt.Println("Merkle tree is valid, SSTable is OK.")
 	return true, 0
 }

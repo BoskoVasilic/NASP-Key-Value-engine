@@ -610,3 +610,36 @@ func DeserializeLSM(path string, bm *BlockManager) *LSMTree {
 	}
 	return tree
 }
+
+func (lt *LSMTree) Print() {
+	if len(lt.Levels) == 0 {
+		fmt.Println("Tree is empty.")
+		return
+	}
+
+	for i := 0; i < len(lt.Levels); i++ {
+		if lt.LevelsSize[i] > 0 {
+			fmt.Println("Level ", i, " with size ", lt.LevelsSize[i])
+			level := lt.Levels[i]
+			for j := 0; j < lt.LevelsSize[i]; j++ {
+				filePath := *(*level)[j]
+				fmt.Println("Path: ", filePath, " with index ", j)
+			}
+		}
+	}
+}
+
+func (lt *LSMTree) ValidateTable(level int, tableNumber int) (bool, int) {
+	if level < 0 || level >= len(lt.Levels) {
+		fmt.Println("Invalid level:", level)
+		return false, -1
+	}
+	if tableNumber < 0 || tableNumber >= lt.LevelsSize[level] {
+		fmt.Println("Invalid table number:", tableNumber)
+		return false, -1
+	}
+
+	fmt.Println(*(*lt.Levels[level])[tableNumber], "is being validated.")
+
+	return ValidateSStabel(*(*lt.Levels[level])[tableNumber], lt.BlockMenager)
+}
