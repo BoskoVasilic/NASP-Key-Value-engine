@@ -23,8 +23,10 @@ type SSTableConfig struct {
 }
 
 type MemtableConfig struct {
-	StructureType string `json:"structureType"`
+	StructureType string `json:"StructureType"`
+	StructNum     int    `json:"structNum"`
 	InstanceCount int    `json:"instanceCount"`
+	MaxEntry      int    `json:"maxEntry"`
 }
 
 type CacheConfig struct {
@@ -32,13 +34,14 @@ type CacheConfig struct {
 }
 
 type LSMTreeConfig struct {
-	AlgorithmType string `json:"algorithmType"`
-	ParamNumber   int    `json:"paramNumber"`
+	AlgorithmType int `json:"algorithmType"`
+	ParamNumber   int `json:"paramNumber"`
+	MaxLevel      int `json:"maxLevel"` // New field for max level
 }
 
 type TokenBucketConfig struct {
-	Tokens          int `json:"tokens"`
-	ResetIntervalMs int `json:"resetIntervalMs"`
+	Tokens           int `json:"tokens"`
+	ResetIntervalSec int `json:"resetIntervalSec"`
 }
 
 // High level config that combines all components
@@ -70,35 +73,49 @@ var defaultConfig = Config{
 	},
 	Memtable: MemtableConfig{
 		StructureType: "skiplist",
+		StructNum:     2,
 		InstanceCount: 5,
 	},
 	Cache: CacheConfig{
 		MaxEntries: 10000,
 	},
 	LSMTree: LSMTreeConfig{
-		AlgorithmType: "leveled",
+		AlgorithmType: 1,
 		ParamNumber:   3,
 	},
 	TokenBucketRateLim: TokenBucketConfig{
-		Tokens:          10,
-		ResetIntervalMs: 16,
+		Tokens:           10,
+		ResetIntervalSec: 30,
 	},
 }
 
 // Read user config from config file
 // If any validation fails, it will use the default config and return an error
 // Therefore it will always return a valid config just may not be the user-provided one
-func ReadConfig(filePath string) (*Config, error) {
+func ReadConfig(filePath string) *Config {
 	file, err := os.Open(filePath)
 	if err != nil {
-		return &defaultConfig, fmt.Errorf("error opening config file, using default: %v", err)
+		fmt.Println("Error opening config file, using default config:", err)
+		return &defaultConfig
 	}
 	defer file.Close()
 
 	var userConfig Config
+
 	decoder := json.NewDecoder(file)
 	if err := decoder.Decode(&userConfig); err != nil {
-		return &defaultConfig, fmt.Errorf("error decoding config file, using default: %v", err)
+		fmt.Println("Error decoding config file, using default config:", err)
+		return &defaultConfig
+	}
+
+	if userConfig.Memtable.StructureType == "skiplist" {
+		userConfig.Memtable.StructNum = 2
+	} else if userConfig.Memtable.StructureType == "hashmap" {
+		userConfig.Memtable.StructNum = 3
+	} else if userConfig.Memtable.StructureType == "btree" {
+		userConfig.Memtable.StructNum = 1
+	} else {
+		userConfig.Memtable.StructNum = defaultConfig.Memtable.StructNum // Use default if invalid
 	}
 
 	var errs []string
@@ -131,7 +148,7 @@ func ReadConfig(filePath string) (*Config, error) {
 	// no validation needed for bools: SeparateFiles and CompressionEnabled
 
 	// Validate Memtable
-	if userConfig.Memtable.StructureType != "skiplist" && userConfig.Memtable.StructureType != "hashmap" && userConfig.Memtable.StructureType != "bst" {
+	if userConfig.Memtable.StructureType != "skiplist" && userConfig.Memtable.StructureType != "hashmap" && userConfig.Memtable.StructureType != "btree" {
 		errs = append(errs, fmt.Sprintf("memtable.structureType invalid (%s), defaulting to %s",
 			userConfig.Memtable.StructureType, defaultConfig.Memtable.StructureType))
 		userConfig.Memtable.StructureType = defaultConfig.Memtable.StructureType
@@ -141,6 +158,7 @@ func ReadConfig(filePath string) (*Config, error) {
 			userConfig.Memtable.InstanceCount, defaultConfig.Memtable.InstanceCount))
 		userConfig.Memtable.InstanceCount = defaultConfig.Memtable.InstanceCount
 	}
+	userConfig.Memtable.MaxEntry++
 
 	// Validate Cache
 	if userConfig.Cache.MaxEntries <= 0 {
@@ -150,8 +168,8 @@ func ReadConfig(filePath string) (*Config, error) {
 	}
 
 	// Validate LSMTree
-	if userConfig.LSMTree.AlgorithmType != "leveled" && userConfig.LSMTree.AlgorithmType != "size-tiered" {
-		errs = append(errs, fmt.Sprintf("lsm-tree.algorithmType invalid (%s), defaulting to %s",
+	if userConfig.LSMTree.AlgorithmType != 1 && userConfig.LSMTree.AlgorithmType != 2 {
+		errs = append(errs, fmt.Sprintf("lsm-tree.algorithmType invalid (%d), defaulting to %d",
 			userConfig.LSMTree.AlgorithmType, defaultConfig.LSMTree.AlgorithmType))
 		userConfig.LSMTree.AlgorithmType = defaultConfig.LSMTree.AlgorithmType
 	}
@@ -167,18 +185,17 @@ func ReadConfig(filePath string) (*Config, error) {
 			userConfig.TokenBucketRateLim.Tokens, defaultConfig.TokenBucketRateLim.Tokens))
 		userConfig.TokenBucketRateLim.Tokens = defaultConfig.TokenBucketRateLim.Tokens
 	}
-	if userConfig.TokenBucketRateLim.ResetIntervalMs <= 0 {
-		errs = append(errs, fmt.Sprintf("tokenBucketRateLimit.resetIntervalMs invalid (%d), defaulting to %d",
-			userConfig.TokenBucketRateLim.ResetIntervalMs, defaultConfig.TokenBucketRateLim.ResetIntervalMs))
-		userConfig.TokenBucketRateLim.ResetIntervalMs = defaultConfig.TokenBucketRateLim.ResetIntervalMs
+	if userConfig.TokenBucketRateLim.ResetIntervalSec <= 0 {
+		errs = append(errs, fmt.Sprintf("tokenBucketRateLimit.resetIntervalSec invalid (%d), defaulting to %d",
+			userConfig.TokenBucketRateLim.ResetIntervalSec, defaultConfig.TokenBucketRateLim.ResetIntervalSec))
+		userConfig.TokenBucketRateLim.ResetIntervalSec = defaultConfig.TokenBucketRateLim.ResetIntervalSec
 	}
 
-	var finalErr error
 	if len(errs) > 0 {
-		finalErr = fmt.Errorf("config validation issues:\n%s", stringJoin(errs, "\n"))
+		fmt.Printf("Error(s) in config file:\n%s\n", stringJoin(errs, "\n"))
 	}
 
-	return &userConfig, finalErr
+	return &userConfig
 }
 
 // Helper join to print error messages for user

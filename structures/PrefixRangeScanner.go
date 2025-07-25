@@ -1,14 +1,26 @@
 package structures
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
-// Need to be tested
-func RangeScan(first, last string, PageNumber, NumberOffEntytyinPage int, dictionary *GlobalDictionary, LSM *LSMTree, bm *BlockManager) {
+func RangeScan(first, last string, PageNumber, NumberOffEntytyinPage int, dictionary *GlobalDictionary, bm *BlockManager) {
+	available := GlobalTokenBucket.CheckAvailability()
+	if !available {
+		fmt.Println("Access limit exceeded!")
+		return
+	}
+	DicLock.RLock()
 	itter := dictionary.SkipList.RangeScan(first, last)
 	for i := 0; i < (PageNumber-1)*NumberOffEntytyinPage; i++ {
-		_, ok := itter.Next()
+		Value, ok := itter.Next()
 		if !ok {
 			return
+		}
+		_, ok = GlobalMemtables.Get(Value.GetKey(), true)
+		if !ok {
+			i--
 		}
 	}
 	for i := 0; i < NumberOffEntytyinPage; i++ {
@@ -17,52 +29,73 @@ func RangeScan(first, last string, PageNumber, NumberOffEntytyinPage int, dictio
 			return
 		}
 		key := entry.GetKey()
-		data, ok := LSM.ReadSStabels(key, bm, dictionary)
+		data, ok := GlobalMemtables.Get(key, true)
 		if !ok {
 			i--
 		}
 		if data == nil {
 			continue
 		}
-		fmt.Println("Key:", key, "Value:", data.GetValue(), "Deleted:", data.IsDeleted())
+		fmt.Println("Key:", key[1:], "Value:", string(data))
 	}
-
+	DicLock.RUnlock()
 }
-func PrefixScan(prefix string, PageNumber, NumberOffEntytyinPage int, dictionary *GlobalDictionary, LSM *LSMTree, bm *BlockManager) {
+func PrefixScan(prefix string, PageNumber, NumberOffEntytyinPage int, dictionary *GlobalDictionary, bm *BlockManager) {
 	first := prefix
 	last := incrementLastRune(prefix)
-	RangeScan(first, last, PageNumber, NumberOffEntytyinPage, dictionary, LSM, bm)
+	RangeScan(first, last, PageNumber, NumberOffEntytyinPage, dictionary, bm)
 }
-func RangeItterator(first, last string, dictionary *GlobalDictionary, LSM *LSMTree, bm *BlockManager) {
+func RangeItterator(first, last string, dictionary *GlobalDictionary, bm *BlockManager) {
 	itter := dictionary.SkipList.RangeScan(first, last)
 	entry, ok := itter.Next()
-	fmt.Println("If you want new entry tipe Next if you are finished type Exit")
 	if !ok {
+		fmt.Println("No entries")
 		return
 	}
-	data, ok := LSM.ReadSStabels(entry.GetKey(), bm, dictionary)
+	data, ok := GlobalMemtables.Get(entry.GetKey())
 	var addeed string
-	for 1 == 1 {
-		fmt.Println("Key:", entry.GetKey(), "Value:", data.GetValue(), "Deleted:", data.IsDeleted())
+	for !ok {
 		entry, ok = itter.Next()
 		if !ok {
+			fmt.Println("No more entries")
+			return
+		}
+		data, ok = GlobalMemtables.Get(entry.GetKey(), true)
+	}
+	for {
+		fmt.Println("Key:", entry.GetKey()[1:], "Value:", string(data))
+		entry, ok = itter.Next()
+		if !ok {
+			fmt.Println("No more entries")
 			break
 		}
-		data, ok = LSM.ReadSStabels(entry.GetKey(), bm, dictionary)
-
-		fmt.Scanln(&addeed)
-		if addeed == "Next" {
-			continue
-		} else {
-			break
+		data, ok = GlobalMemtables.Get(entry.GetKey())
+		for !ok {
+			entry, ok = itter.Next()
+			if !ok {
+				fmt.Println("No more entries")
+				return
+			}
+			data, ok = GlobalMemtables.Get(entry.GetKey(), true)
+		}
+		for {
+			fmt.Print("[ITERATOR]> ")
+			fmt.Scanln(&addeed)
+			if strings.ToUpper(addeed) == "NEXT" {
+				break
+			} else if strings.ToUpper(addeed) == "STOP" {
+				return
+			} else {
+				fmt.Println("Invalid command. Type 'NEXT' to continue or 'STOP' to exit.")
+				continue
+			}
 		}
 	}
-
 }
-func PrefixRangeScan(prefix string, PageNumber, NumberOffEntytyinPage int, dictionary *GlobalDictionary, LSM *LSMTree, bm *BlockManager) {
+func PrefixItterator(prefix string, dictionary *GlobalDictionary, bm *BlockManager) {
 	first := prefix
 	last := incrementLastRune(prefix)
-	RangeScan(first, last, PageNumber, NumberOffEntytyinPage, dictionary, LSM, bm)
+	RangeItterator(first, last, dictionary, bm)
 }
 
 func incrementLastRune(s string) string {

@@ -15,6 +15,7 @@ type Node struct {
 type SkipList struct {
 	currentHeight int
 	head          *Node
+	size          int
 }
 
 func (s *SkipList) GetHeight() int {
@@ -48,10 +49,8 @@ func NewSkipList() *SkipList {
 }
 
 func (s *SkipList) findPath(key string) (bool, []*Node, error) {
-	fmt.Println("Finding " + key)
 	path := make([]*Node, s.currentHeight+1)
 	currentNode := s.head
-	fmt.Println(s)
 	height := 0
 	for currentNode.data.key != key {
 		if currentNode.next != nil && currentNode.next.data.key <= key {
@@ -73,9 +72,8 @@ func (s *SkipList) findPath(key string) (bool, []*Node, error) {
 
 	return true, path, nil
 }
-func (s *SkipList) Put(key string, value []byte) error {
-	err := s.insert(key, value, false)
-	return err
+func (s *SkipList) Put(key string, value []byte) {
+	s.insert(key, value, false)
 }
 func (s *SkipList) insert(key string, value []byte, tombstone bool) error {
 	found, path, err := s.findPath(key)
@@ -121,32 +119,32 @@ func (s *SkipList) insert(key string, value []byte, tombstone bool) error {
 		}
 		s.head = headNode
 	}
+
+	if err == nil {
+		s.size++
+	}
 	return err
 }
 func (s *SkipList) getEntry(key string) (Entry, bool, error) {
 	var zero Entry
 	found, path, err := s.findPath(key)
-	fmt.Println("found:", found, "path:", path, len(path), "currentHeight:",
-		path[s.currentHeight].data.value, "deleted:", path[s.currentHeight].data.deleted)
 	if found {
-		if path[s.currentHeight].data.deleted {
-			return zero, false, err
-		}
 		return *path[s.currentHeight].data, true, err
 	}
 	return zero, false, err
 }
-func (s *SkipList) Get(key string) (Entry, error) {
+func (s *SkipList) Get(key string) (Entry, bool) {
 	var zero Entry
 	value, found, err := s.getEntry(key)
 	if err != nil {
-		return zero, err
+		return zero, false
 	}
 	if !found {
-		return zero, nil
+		return zero, false
 	}
-	return value, nil
+	return value, true
 }
+
 func (s *SkipList) Print() {
 	curentNode := s.head
 	for curentNode != nil {
@@ -160,12 +158,19 @@ func (s *SkipList) Print() {
 	}
 
 }
-func (s *SkipList) Delete(key string) error {
+func (s *SkipList) delete(key string) error {
 	err := s.insert(key, nil, true)
 	return err
 }
 
-func (s *SkipList) GetIter() *utils.Iterator[Node, *Node, *Entry] {
+func (s *SkipList) Delete(key string) {
+	err := s.delete(key)
+	if err != nil {
+		panic(err)
+	}
+}
+
+func (s *SkipList) GetIter() any {
 
 	curentNode := s.head
 	for curentNode.down != nil {
@@ -183,6 +188,7 @@ func (s *SkipList) GetIter() *utils.Iterator[Node, *Node, *Entry] {
 		return data, true
 	})
 }
+
 func (s *SkipList) RangeScan(first, last string) *utils.Iterator[string, *Node, *Entry] {
 	_, path, _ := s.findPath(first)
 	currentNode := path[s.currentHeight]
@@ -203,4 +209,16 @@ func (s *SkipList) RangeScan(first, last string) *utils.Iterator[string, *Node, 
 		*current = (*current).next
 		return data, true
 	})
+}
+
+func (s *SkipList) GetSize() int {
+	return s.size
+}
+
+func (s *SkipList) GetTypeInt() int {
+	return 2 // SkipList is represented by 2
+}
+
+func (s *SkipList) GetNew() Storage {
+	return NewSkipList()
 }

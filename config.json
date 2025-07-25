@@ -4,16 +4,19 @@
   },
   "memtable": {
     "structureType": "skiplist",
-    "instanceCount": 5
+    "structNum": 3,
+    "instanceCount": 5,
+    "maxEntry": 3
   },
   "sstable": {
     "summarySampling": 5,
-    "separateFiles": true,
-    "compressionEnabled": true
+    "separateFiles": false,
+    "compressionEnabled": false
   },
   "lsm-tree": {
-    "algorithmType": "leveled",
-    "paramNumber": 3
+    "algorithmType": 2, 
+    "paramNumber": 2,
+    "maxLevel": 10
   },
   "cache": {
     "maxEntries": 10000         
@@ -24,6 +27,6 @@
   },
   "tokenBucketRateLimit": {
     "tokens": 10,
-    "resetIntervalMs": 16
+    "resetIntervalSec": 30
   }
 }

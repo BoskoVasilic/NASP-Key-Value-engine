@@ -3,7 +3,6 @@ package structures
 import (
 	"KVengine/hash"
 	utils "KVengine/utils"
-	"fmt"
 )
 
 type BloomFilter struct {
@@ -42,7 +41,7 @@ func NewBloomFilterWithParams(ExpectedElements int, falsePositiveRate float64) *
 func (b *BloomFilter) Put(data []byte) {
 	for _, h := range b.HashFunc {
 		adrees := h.Hash(data) % uint64(b.MainLen)
-		fmt.Println(adrees)
+		//fmt.Println(adrees)
 		index := adrees / 8
 		bit := adrees % 8
 		b.ArrayMain[index] |= (1 << bit)

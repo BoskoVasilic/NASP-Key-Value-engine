@@ -2,15 +2,15 @@ package structures
 
 import (
 	"encoding/binary"
-	"fmt"
 	"io"
 	"log"
 	"math"
 	"os"
 )
 
+var BLOCK_SIZE int
+
 const (
-	BLOCK_SIZE        = 8000 // specify the block size in config file
 	BLOCK_HEADER_SIZE = 4
 )
 
@@ -28,6 +28,7 @@ type BlockManager struct {
 }
 
 func NewBlockManager(cacheSize int) *BlockManager {
+	BLOCK_SIZE = GlobalConfig.BlockManager.BlockSizeKB * 1000
 	return &BlockManager{
 		cache: NewBlockCache(cacheSize),
 	}
@@ -50,12 +51,15 @@ func closeFile(file *os.File) {
 }
 
 func (bm *BlockManager) ReadBlock(filePath string, blockNumber int) ([]byte, error) {
+	BlockCacheLock.Lock()
 	if data, ok := bm.cache.Get(filePath, uint32(blockNumber*BLOCK_SIZE)); ok {
+		BlockCacheLock.Unlock()
 		return data, nil
 	}
+	BlockCacheLock.Unlock()
 
+	BlockManagerLock.Lock()
 	file := openFile(filePath, os.O_RDONLY)
-	defer closeFile(file)
 
 	_, err := file.Seek(int64(blockNumber*BLOCK_SIZE), 0)
 	if err != nil {
@@ -64,12 +68,14 @@ func (bm *BlockManager) ReadBlock(filePath string, blockNumber int) ([]byte, err
 
 	data := make([]byte, BLOCK_SIZE)
 
-	_, err = file.Read(data)
-	if err != nil {
-		log.Printf("Error reading file: %v", err)
-	}
+	file.Read(data)
 
+	closeFile(file)
+	BlockManagerLock.Unlock()
+
+	BlockCacheLock.Lock()
 	bm.cache.Put(filePath, uint32(blockNumber*BLOCK_SIZE), data)
+	BlockCacheLock.Unlock()
 
 	return data, err
 }
@@ -173,17 +179,25 @@ func (bm *BlockManager) AddDataWithBiggerSizeToBlock(currentLength int, remainin
 	} else {
 		copy(newBlock, data)
 		newLength := len(data)
-		binary.LittleEndian.PutUint32(newBlock[BLOCK_SIZE-BLOCK_HEADER_SIZE:], uint32(newLength))
-		allBlocksToWrite = append(allBlocksToWrite, newBlock...)
+		if len(data) > BLOCK_SIZE-BLOCK_HEADER_SIZE {
+			additionalBlock = make([]byte, BLOCK_SIZE)
+			binary.LittleEndian.PutUint32(additionalBlock[BLOCK_SIZE-BLOCK_HEADER_SIZE:], uint32(0))
+			allBlocksToWrite = append(allBlocksToWrite, newBlock...)
+			allBlocksToWrite = append(allBlocksToWrite, additionalBlock...)
+			lastBlock = additionalBlock
+		} else {
+			binary.LittleEndian.PutUint32(newBlock[BLOCK_SIZE-BLOCK_HEADER_SIZE:], uint32(newLength))
+			allBlocksToWrite = append(allBlocksToWrite, newBlock...)
+			lastBlock = newBlock
+		}
 		block = allBlocksToWrite
-		lastBlock = newBlock
 	}
 	return block, lastBlock
 }
 
 func (bm *BlockManager) WriteToDisk(filePath string, blockNumber int, block []byte) error {
+	BlockManagerLock.Lock()
 	file := openFile(filePath, os.O_RDWR)
-	defer closeFile(file)
 
 	_, err := file.Seek(int64(blockNumber*BLOCK_SIZE), 0)
 	if err != nil {
@@ -194,18 +208,22 @@ func (bm *BlockManager) WriteToDisk(filePath string, blockNumber int, block []by
 	if err != nil {
 		log.Fatal(err)
 	}
+	closeFile(file)
+	BlockManagerLock.Unlock()
 
+	BlockCacheLock.Lock()
 	for i := 0; i < len(block); i += BLOCK_SIZE {
 		blockData := block[i : i+BLOCK_SIZE]
 		bm.cache.Put(filePath, uint32((blockNumber+i)*BLOCK_SIZE), blockData)
 	}
+	BlockCacheLock.Unlock()
 
 	return nil
 }
 
 func (bm *BlockManager) OverwriteOnDisk(filePath string, offset int, data []byte) error {
+	BlockManagerLock.Lock()
 	file := openFile(filePath, os.O_RDWR)
-	defer closeFile(file)
 
 	_, err := file.Seek(int64(offset), 0)
 	if err != nil {
@@ -216,6 +234,8 @@ func (bm *BlockManager) OverwriteOnDisk(filePath string, offset int, data []byte
 	if err != nil {
 		log.Fatal(err)
 	}
+	closeFile(file)
+	BlockManagerLock.Unlock()
 
 	return nil
 }
@@ -233,9 +253,14 @@ func (bm *BlockManager) ReadBytesByOffset(filePath string, offset int, bytesNeed
 		block, err := bm.ReadBlock(filePath, blockNumber)
 		if err != nil {
 			if err == io.EOF {
-				successfullyRead = len(allBlocksToReturn[startInBlock:])
-				allBlocksToReturn = append(allBlocksToReturn, make([]byte, bytesNeeded-successfullyRead)...)
-				break
+				if len(allBlocksToReturn) == 0 {
+					allBlocksToReturn = make([]byte, bytesNeeded)
+					return 0, allBlocksToReturn
+				} else {
+					successfullyRead = len(allBlocksToReturn[startInBlock:])
+					allBlocksToReturn = append(allBlocksToReturn, make([]byte, bytesNeeded-successfullyRead)...)
+					break
+				}
 			}
 		}
 		blockNumber++
@@ -265,19 +290,18 @@ func (bm *BlockManager) WriteBytesByOffset(filePath string, offset int, data []b
 }
 
 func (bm *BlockManager) GetEndOfFile(filePath string) int {
+	BlockManagerLock.Lock()
 	file := openFile(filePath, os.O_CREATE)
 
-	defer closeFile(file)
-
 	info, err := file.Stat()
+
+	closeFile(file)
+	BlockManagerLock.Unlock()
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	fmt.Println("File size:", info.Size())
-
 	if info.Size() == 0 {
-		fmt.Println("File is empty, returning 0 as end of file")
 		return -1
 	}
 
