@@ -17,7 +17,6 @@ func RangeScan(first, last string, PageNumber, NumberOffEntytyinPage int, dictio
 		fmt.Println("Access limit exceeded!")
 		return
 	}
-	DicLock.RLock()
 	itter := dictionary.SkipList.RangeScan(first, last)
 	for i := 0; i < (PageNumber-1)*NumberOffEntytyinPage; i++ {
 		Value, ok := itter.Next()
@@ -44,7 +43,7 @@ func RangeScan(first, last string, PageNumber, NumberOffEntytyinPage int, dictio
 		}
 		fmt.Println("Key:", key[1:], "Value:", string(data))
 	}
-	DicLock.RUnlock()
+
 }
 func PrefixScan(prefix string, PageNumber, NumberOffEntytyinPage int, dictionary *GlobalDictionary, bm *BlockManager) {
 	/*
