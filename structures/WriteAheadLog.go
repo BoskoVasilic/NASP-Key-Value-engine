@@ -442,7 +442,7 @@ func (wal *WriteAheadLog) GetWalElement() (*Entry, bool) {
 func (wal *WriteAheadLog) GetCurrentStatus() WriteStatus {
 	status := WriteStatus{
 		filePath: wal.lastSegment.blockManagerWrap.filePath,
-		offset:   wal.lastSegment.blockManagerWrap.GetLastWrittenByteOffset() + 1,
+		offset:   wal.lastSegment.blockManagerWrap.GetLastWrittenByteOffset(),
 	}
 	return status
 }
