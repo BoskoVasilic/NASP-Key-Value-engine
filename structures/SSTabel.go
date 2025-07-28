@@ -729,7 +729,9 @@ func ReadDataCompressed(file *BlockManagerWrap) *ExportEntry {
 	n, buffer = file.ReadFromCurrentPosition(uvarMaxSize)
 	valueSize, m := binary.Uvarint(buffer)
 	file.MoveFromCurrentPosition(int(m) - int(n))
-	n, data = file.ReadFromCurrentPosition(int(valueSize - 1))
+	if valueSize != 0 {
+		n, data = file.ReadFromCurrentPosition(int(valueSize - 1))
+	}
 	n, buffer = file.ReadFromCurrentPosition(uvarMaxSize)
 	timestamp, m := binary.Uvarint(buffer)
 	file.MoveFromCurrentPosition(int(m) - int(n))
