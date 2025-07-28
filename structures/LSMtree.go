@@ -567,6 +567,10 @@ func DeserializeLSM(path string, bm *BlockManager) *LSMTree {
 		tree.Levels = append(tree.Levels, &levelPaths)
 	}
 	tree.maxLevel = max(GlobalConfig.LSMTree.MaxLevel, int(maxLevel))
+	for len(tree.LevelsSize) < tree.maxLevel+1 {
+		tree.LevelsSize = append(tree.LevelsSize, 0)
+	}
+
 	return tree
 }
 
