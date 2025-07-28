@@ -23,7 +23,7 @@ type SSTableConfig struct {
 }
 
 type MemtableConfig struct {
-	StructureType string `json:"StructureType"`
+	StructureType string `json:"structureType"`
 	StructNum     int    `json:"structNum"`
 	InstanceCount int    `json:"instanceCount"`
 	MaxEntry      int    `json:"maxEntry"`

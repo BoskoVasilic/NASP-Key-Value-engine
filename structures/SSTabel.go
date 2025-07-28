@@ -1156,9 +1156,17 @@ func ValidateSStabel(path string, bm *BlockManager) (bool, int) {
 	file2.SetCurrentPosition(2)
 	_, NeumberOfEntrys := file2.ReadFromCurrentPosition(8)
 	file3 := GetDataFile(path, bm)
+	file2.SetCurrentPosition(0)
+	_, is_compressed := file2.ReadFromCurrentPosition(1)
 	for i := uint64(0); i < utils.BytesToUint64(NeumberOfEntrys); i++ {
-		entry := ReadData(file3)
-		merkle2.Put(entry.toBytes())
+
+		if is_compressed[0] == 0 {
+			entry := ReadData(file3)
+			merkle2.Put(entry.toBytes())
+		} else {
+			entry := ReadDataCompressed(file3)
+			merkle2.Put(entry.toBytes())
+		}
 	}
 	merkle2.build()
 	isOk, idx := CompareTreesWithIndex(merkleTree, merkle2)

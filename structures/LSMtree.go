@@ -23,7 +23,7 @@ func NewLSMTree(maxLevel int, BlockMenager *BlockManager) *LSMTree {
 		Levels:       make([]*[]*string, 0),
 		currentLevel: 0,
 		maxLevel:     maxLevel,
-		LevelsSize:   make([]int, maxLevel),
+		LevelsSize:   make([]int, maxLevel+1),
 		BlockMenager: BlockMenager,
 		// LevelsSize is a slice that keeps track of the size of each level in the LSM tree.
 		// It is initialized to a slice of integers with length equal to maxLevel, all set to zero.
@@ -535,7 +535,7 @@ func DeserializeLSM(path string, bm *BlockManager) *LSMTree {
 		path2 := path + "backup"
 
 		if _, err := os.Stat(path2); os.IsNotExist(err) {
-			return NewLSMTree(4, bm) //TODO make confing like that
+			return NewLSMTree(GlobalConfig.LSMTree.MaxLevel, bm)
 		} else {
 			os.Rename(path2, path)
 		}
@@ -566,6 +566,7 @@ func DeserializeLSM(path string, bm *BlockManager) *LSMTree {
 		}
 		tree.Levels = append(tree.Levels, &levelPaths)
 	}
+	tree.maxLevel = max(GlobalConfig.LSMTree.MaxLevel, int(maxLevel))
 	return tree
 }
 
