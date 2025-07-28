@@ -82,6 +82,7 @@ func WriteToFilesCompresed[T any, H any](StartPath string, oneFile bool, BlockMa
 		//Write Merkel tree in this section
 		dataMerkle := treeMerkle.SerializeMerkle()
 		dataMerkleLength := uint64(len(dataMerkle))
+		file.WriteToFile(dataMerkle)
 		// Generating heeder with offsets
 		Heeder := make([]byte, 0)
 		offsetStart := uint64(58) // Starting offset for the header
@@ -98,7 +99,7 @@ func WriteToFilesCompresed[T any, H any](StartPath string, oneFile bool, BlockMa
 		file.WriteToFile([]byte(firstKey))
 		file.WriteToFile(utils.Uint64ToBytes(uint64(len(lastkey))))
 		file.WriteToFile([]byte(lastkey))
-		file.WriteToFile(dataMerkle) // Write the Merkle tree data
+		// Write the Merkle tree data
 		file.SetCurrentPosition(2)
 		file.OverwriteDataInFile(Heeder) // Overwrite the header with the offsets
 		file.FlushBuffer(false)          // Flush the buffer to write the header to the file
@@ -1145,6 +1146,7 @@ func ValidateSStabel(path string, bm *BlockManager) (bool, int) {
 	}
 	// Read the Merkle tree from the file
 	_, merkleTreeData := file.ReadFromCurrentPosition(int(size))
+	// Deserialize the Merkle tree
 	merkleTree := DeserializeMerkle(merkleTreeData)
 	merkle2 := NewMerkleTree()
 	file2 := NewBlockManagerWrap(path, bm)

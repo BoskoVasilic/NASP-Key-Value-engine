@@ -10,7 +10,7 @@
   },
   "sstable": {
     "summarySampling": 5,
-    "separateFiles": false,
+    "separateFiles": true,
     "compressionEnabled": false
   },
   "lsm-tree": {
