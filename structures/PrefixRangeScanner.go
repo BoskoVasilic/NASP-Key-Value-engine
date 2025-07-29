@@ -6,19 +6,27 @@ import (
 )
 
 func RangeScan(first, last string, PageNumber, NumberOffEntytyinPage int, dictionary *GlobalDictionary, bm *BlockManager) {
+	/*
+		Rnge scan ide kroz dictionarijum i ispisuje sve kljuceve i
+		vrednosti koji su u opsegu od first do last.
+		Kada dobijem niz kljuceva poziva se funkcija Get iz GlobalMemtables
+		koja vraca vrednost za dati kljuc.
+	*/
+
 	available := GlobalTokenBucket.CheckAvailability()
 	if !available {
 		fmt.Println("Access limit exceeded!")
 		return
 	}
-	DicLock.RLock()
+
 	itter := dictionary.SkipList.RangeScan(first, last)
 	for i := 0; i < (PageNumber-1)*NumberOffEntytyinPage; i++ {
 		Value, ok := itter.Next()
 		if !ok {
 			return
 		}
-		_, ok = GlobalMemtables.Get(Value.GetKey(), true)
+		_, ok, _ = GlobalMemtables.Get(Value.GetKey(), true)
+
 		if !ok {
 			i--
 		}
@@ -29,7 +37,8 @@ func RangeScan(first, last string, PageNumber, NumberOffEntytyinPage int, dictio
 			return
 		}
 		key := entry.GetKey()
-		data, ok := GlobalMemtables.Get(key, true)
+		data, ok, _ := GlobalMemtables.Get(key, true)
+
 		if !ok {
 			i--
 		}
@@ -38,21 +47,33 @@ func RangeScan(first, last string, PageNumber, NumberOffEntytyinPage int, dictio
 		}
 		fmt.Println("Key:", key[1:], "Value:", string(data))
 	}
-	DicLock.RUnlock()
+
 }
 func PrefixScan(prefix string, PageNumber, NumberOffEntytyinPage int, dictionary *GlobalDictionary, bm *BlockManager) {
+	/*
+		Svodi se na range scan samo sto koristi prefix koji je first element a
+		last element se dobija tako sto se doda 1 na zadnji deo u stringu.
+	*/
 	first := prefix
 	last := incrementLastRune(prefix)
 	RangeScan(first, last, PageNumber, NumberOffEntytyinPage, dictionary, bm)
+
 }
 func RangeItterator(first, last string, dictionary *GlobalDictionary, bm *BlockManager) {
+	/*
+		Range iterator ide kroz dictionarijum i dobavja kljuc po kljuc
+		U trenutku kada dobavljanje novog kljuca nije moguce zavrsa ve se iteracija
+		Vrednosti se dobavljaju iz GlobalMemtables i ispisuju se na konzoli.
+	*/
+
 	itter := dictionary.SkipList.RangeScan(first, last)
 	entry, ok := itter.Next()
 	if !ok {
 		fmt.Println("No entries")
 		return
 	}
-	data, ok := GlobalMemtables.Get(entry.GetKey())
+	data, ok, _ := GlobalMemtables.Get(entry.GetKey())
+
 	var addeed string
 	for !ok {
 		entry, ok = itter.Next()
@@ -60,7 +81,8 @@ func RangeItterator(first, last string, dictionary *GlobalDictionary, bm *BlockM
 			fmt.Println("No more entries")
 			return
 		}
-		data, ok = GlobalMemtables.Get(entry.GetKey(), true)
+		data, ok, _ = GlobalMemtables.Get(entry.GetKey(), true)
+
 	}
 	for {
 		fmt.Println("Key:", entry.GetKey()[1:], "Value:", string(data))
@@ -69,14 +91,15 @@ func RangeItterator(first, last string, dictionary *GlobalDictionary, bm *BlockM
 			fmt.Println("No more entries")
 			break
 		}
-		data, ok = GlobalMemtables.Get(entry.GetKey())
+		data, ok, _ = GlobalMemtables.Get(entry.GetKey())
+
 		for !ok {
 			entry, ok = itter.Next()
 			if !ok {
 				fmt.Println("No more entries")
 				return
 			}
-			data, ok = GlobalMemtables.Get(entry.GetKey(), true)
+			data, ok, _ = GlobalMemtables.Get(entry.GetKey(), true)
 		}
 		for {
 			fmt.Print("[ITERATOR]> ")
@@ -93,6 +116,11 @@ func RangeItterator(first, last string, dictionary *GlobalDictionary, bm *BlockM
 	}
 }
 func PrefixItterator(prefix string, dictionary *GlobalDictionary, bm *BlockManager) {
+	/*
+		Svodi se na range itterator samo sto koristi prefix koji je first element a
+		last element se dobija tako sto se doda 1 na zadnji deo u stringu.
+	*/
+
 	first := prefix
 	last := incrementLastRune(prefix)
 	RangeItterator(first, last, dictionary, bm)

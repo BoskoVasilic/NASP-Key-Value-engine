@@ -49,7 +49,13 @@ func Run() {
 			key, value := parts[1], strings.Join(parts[2:], " ")
 			fmt.Println("[PUT]", key, value)
 
-			structures.GlobalMemtables.Put("d"+key, []byte(value))
+			success := structures.GlobalMemtables.Put("d"+key, []byte(value))
+
+			if !success {
+				fmt.Println("Put operation failed because of denied access at this time.")
+				continue
+			}
+
 
 		// GET command expects at least 1 part: key and then retrieves the value from the engine
 		case "GET":
@@ -59,7 +65,13 @@ func Run() {
 			}
 			key := parts[1]
 			fmt.Println("[GET]", key)
-			val, found := structures.GlobalMemtables.Get("d" + key)
+
+			val, found, deniedAccess := structures.GlobalMemtables.Get("d" + key)
+			if deniedAccess {
+				fmt.Println("Get operation failed because of denied access at this time.")
+				continue
+			}
+
 			if !found {
 				fmt.Println("Key not found in database.")
 				continue
@@ -75,8 +87,14 @@ func Run() {
 			key := parts[1]
 			fmt.Println("[DELETE]", key)
 
-			structures.GlobalMemtables.Delete("d" + key)
-			fmt.Println("Key found and deleted:", key)
+			isDeleted := structures.GlobalMemtables.Delete("d" + key)
+			if !isDeleted {
+				fmt.Println("Key not deleted because of denied access at this time.")
+				continue
+			}
+			// WAL operation for DELETE
+			fmt.Println("Key deleted:", key)
+
 
 		case "PREFIX_SCAN":
 			if len(parts) < 4 {
@@ -161,7 +179,13 @@ func Run() {
 				continue
 			}
 			bloomFilter := structures.NewBloomFilterWithParams(expectedInsertions, falsePositiveRate)
-			structures.GlobalMemtables.Put("b"+parts[1], bloomFilter.SerializeBloomF())
+
+			success := structures.GlobalMemtables.Put("b"+parts[1], bloomFilter.SerializeBloomF())
+			if !success {
+				fmt.Println("BloomFilter not created because of denied access at the moment.")
+				continue
+			}
+
 
 		case "BF_DELETE":
 			if len(parts) < 2 {
@@ -170,7 +194,13 @@ func Run() {
 			}
 			fmt.Println("[BloomFilter Delete]", parts[1])
 
-			structures.GlobalMemtables.Delete("b" + parts[1])
+
+			isDeleted := structures.GlobalMemtables.Delete("b" + parts[1])
+			if !isDeleted {
+				fmt.Println("BloomFilter not deleted because of denied access at the moment.")
+				continue
+			}
+
 
 		case "BF_PUT":
 			if len(parts) < 3 {
@@ -179,14 +209,27 @@ func Run() {
 			}
 			fmt.Println("[BloomFilter Put]", parts[1], parts[2])
 
-			bloomFilterData, found := structures.GlobalMemtables.Get("b" + parts[1])
+
+			bloomFilterData, found, deniedAccess := structures.GlobalMemtables.Get("b" + parts[1])
+			if deniedAccess {
+				fmt.Println("Access denied at the moment.")
+				continue
+			}
+
 			if !found {
 				fmt.Println("BloomFilter not found")
 				continue
 			}
+
+			
 			bloomFilter := structures.DeserializeBloomF(bloomFilterData)
 			bloomFilter.Put([]byte(parts[2]))
-			structures.GlobalMemtables.Put("b"+parts[1], bloomFilter.SerializeBloomF())
+			success := structures.GlobalMemtables.Put("b"+parts[1], bloomFilter.SerializeBloomF())
+			if !success {
+				fmt.Println("Element not added to BloomFilter because it is full or access denied at the moment.")
+				continue
+			}
+
 
 		case "BF_CHECK":
 			if len(parts) < 3 {
@@ -195,7 +238,13 @@ func Run() {
 			}
 			fmt.Println("[BloomFilter Check]", parts[1], parts[2])
 
-			bloomFilterData, found := structures.GlobalMemtables.Get("b" + parts[1])
+
+			bloomFilterData, found, deniedAccess := structures.GlobalMemtables.Get("b" + parts[1])
+			if deniedAccess {
+				fmt.Println("Access denied at the moment.")
+				continue
+			}
+
 			if !found {
 				fmt.Println("BloomFilter not found")
 				continue
@@ -223,7 +272,13 @@ func Run() {
 				continue
 			}
 			cms := structures.NewCountMinSketch(uint32(depth), uint32(width))
-			structures.GlobalMemtables.Put("c"+parts[1], cms.Serialize())
+			success := structures.GlobalMemtables.Put("c"+parts[1], cms.Serialize())
+			if !success {
+				fmt.Println("CountMinSketch not created because of denied access at the moment.")
+				continue
+			}
+
+
 
 		case "CMS_DELETE":
 			if len(parts) < 2 {
@@ -232,7 +287,11 @@ func Run() {
 			}
 			fmt.Println("[CountMinSketch Delete]", parts[1])
 
-			structures.GlobalMemtables.Delete("c" + parts[1])
+			isDeleted := structures.GlobalMemtables.Delete("c" + parts[1])
+			if !isDeleted {
+				fmt.Println("CountMinSketch not deleted because of denied access at the moment.")
+				continue
+			}
 
 		case "CMS_ADD":
 			if len(parts) < 3 {
@@ -241,14 +300,22 @@ func Run() {
 			}
 			fmt.Println("[CountMinSketch Add]", parts[1], parts[2])
 
-			cmsData, found := structures.GlobalMemtables.Get("c" + parts[1])
+			cmsData, found, deniedAccess := structures.GlobalMemtables.Get("c" + parts[1])
+			if deniedAccess {
+				fmt.Println("Access denied at the moment.")
+				continue
+			}
 			if !found {
 				fmt.Println("CountMinSketch not found")
 				continue
 			}
 			cms := structures.DeserializeCMS(cmsData)
 			cms.Add(parts[2])
-			structures.GlobalMemtables.Put("c"+parts[1], cms.Serialize())
+			success := structures.GlobalMemtables.Put("c"+parts[1], cms.Serialize())
+			if !success {
+				fmt.Println("Element not added to CountMinSketch because it is full or access denied at the moment.")
+				continue
+			}
 
 		case "CMS_CHECK":
 			if len(parts) < 3 {
@@ -257,7 +324,11 @@ func Run() {
 			}
 			fmt.Println("[CountMinSketch Check]", parts[1], parts[2])
 
-			cmsData, found := structures.GlobalMemtables.Get("c" + parts[1])
+			cmsData, found, deniedAccess := structures.GlobalMemtables.Get("c" + parts[1])
+			if deniedAccess {
+				fmt.Println("Access denied at the moment.")
+				continue
+			}
 			if !found {
 				fmt.Println("CountMinSketch not found")
 				continue
@@ -281,7 +352,12 @@ func Run() {
 			}
 			p8 := uint8(p)
 			hll := structures.NewHyperLogLog(p8) // Default p value
-			structures.GlobalMemtables.Put("h"+parts[1], hll.SerializeHLL())
+			success := structures.GlobalMemtables.Put("h"+parts[1], hll.SerializeHLL())
+			if !success {
+				fmt.Println("HyperLogLog not created because of denied access at the moment.")
+				continue
+			}
+
 
 		case "HLL_DELETE":
 			if len(parts) < 2 {
@@ -289,7 +365,12 @@ func Run() {
 				continue
 			}
 			fmt.Println("[HyperLogLog Delete]", parts[1])
-			structures.GlobalMemtables.Delete("h" + parts[1])
+			isDeleted := structures.GlobalMemtables.Delete("h" + parts[1])
+			if !isDeleted {
+				fmt.Println("HyperLogLog not deleted because of denied access at the moment.")
+				continue
+			}
+
 
 		case "HLL_ADD":
 			if len(parts) < 3 {
@@ -297,14 +378,24 @@ func Run() {
 				continue
 			}
 			fmt.Println("[HyperLogLog Add]", parts[1], parts[2])
-			hllData, found := structures.GlobalMemtables.Get("h" + parts[1])
+			hllData, found, deniedAccess := structures.GlobalMemtables.Get("h" + parts[1])
+			if deniedAccess {
+				fmt.Println("Access denied at the moment.")
+				continue
+			}
+
 			if !found {
 				fmt.Println("HyperLogLog not found")
 				continue
 			}
 			hll := structures.DeserializeHLL(hllData)
 			hll.Add(parts[2])
-			structures.GlobalMemtables.Put("h"+parts[1], hll.SerializeHLL())
+			success := structures.GlobalMemtables.Put("h"+parts[1], hll.SerializeHLL())
+			if !success {
+				fmt.Println("Element not added to HyperLogLog because it is full or access denied at the moment.")
+				continue
+			}
+
 
 		case "HLL_COUNT":
 			if len(parts) < 2 {
@@ -313,7 +404,12 @@ func Run() {
 			}
 			fmt.Println("[HyperLogLog Count]", parts[1])
 
-			hllData, found := structures.GlobalMemtables.Get("h" + parts[1])
+			hllData, found, deniedAccess := structures.GlobalMemtables.Get("h" + parts[1])
+			if deniedAccess {
+				fmt.Println("Access denied at the moment.")
+				continue
+			}
+
 			if !found {
 				fmt.Println("HyperLogLog not found")
 				continue
@@ -334,7 +430,12 @@ func Run() {
 
 			hash := structures.SimHash(text) // Generate SimHash for the text
 
-			structures.GlobalMemtables.Put("s"+name, hash)
+			success := structures.GlobalMemtables.Put("s"+name, hash)
+			if !success {
+				fmt.Println("Element not added to SimHash because it is full or access denied at the moment.")
+				continue
+			}
+
 
 		case "SIMHASH_DIST":
 			if len(parts) < 3 {
@@ -344,10 +445,19 @@ func Run() {
 			fmt.Println("[SimHash Distance]", parts[1], parts[2])
 			// Hamming distance between two SimHashes
 
-			hash1, found1 := structures.GlobalMemtables.Get("s" + parts[1])
-			hash2, found2 := structures.GlobalMemtables.Get("s" + parts[2])
-			if !found1 || !found2 {
-				fmt.Println("One or both SimHashes not found")
+			hash1, found1, deniedAccess1 := structures.GlobalMemtables.Get("s" + parts[1])
+			if !found1 {
+				fmt.Println("SimHash for", parts[1], "not found")
+				continue
+			}
+			hash2, found2, deniedAccess2 := structures.GlobalMemtables.Get("s" + parts[2])
+			if !found2 {
+				fmt.Println("SimHash for", parts[2], "not found")
+				continue
+			}
+			if deniedAccess1 || deniedAccess2 {
+				fmt.Println("Access denied at the moment for one or both get operations of SimHashes.")
+
 				continue
 			}
 			dist := structures.CalculateHammingDistance(hash1, hash2)
@@ -372,7 +482,7 @@ func Run() {
 				continue
 			}
 			ok, ind := structures.GlobalLsm.ValidateTable(level, index)
-			fmt.Println(ok, ind)
+
 			if ok {
 				fmt.Printf("Storage at level %d, index %d is valid.\n", level, index)
 			} else {
@@ -389,7 +499,11 @@ func Run() {
 	}
 }
 
+// This way the explanation of commands is separated from the main logic
+// the extra parentheses are aligned and used to make commands more understandable
 func printCommands() {
+	fmt.Println("-------------------------------")
+
 	fmt.Println("Available commands:")
 	fmt.Println("PUT key value")
 	fmt.Println("GET key")
@@ -398,12 +512,13 @@ func printCommands() {
 	fmt.Println("PREFIX_SCAN prefix pageNumber pageSize")
 	fmt.Println("RANGE_SCAN minKey maxKey pageNumber pageSize")
 	fmt.Println("------------------------------")
-	fmt.Println("PREFIX_ITERATE prefix  		(then use NEXT/STOP)")
-	fmt.Println("RANGE_ITERATE minKey maxKey  	(then use NEXT/STOP)")
+	fmt.Println("PREFIX_ITERATE prefix  				(then use NEXT/STOP)")
+	fmt.Println("RANGE_ITERATE minKey maxKey  			(then use NEXT/STOP)")
 	fmt.Println("NEXT / STOP")
 	fmt.Println("------------------------------")
 	fmt.Println("STORAGE_LOCATIONS 				(prints storage locations)")
-	fmt.Println("STORAGE_VALIDATE level index 	(validates storage for level and index)")
+	fmt.Println("STORAGE_VALIDATE level index 			(validates storage for level and index)")
+
 	fmt.Println("------------------------------")
 	fmt.Println("Work with Probabilistic Structures:")
 	fmt.Println("BF=BloomFilter, CMS=CountMinSketch, HLL=HyperLogLog, SIMHASH=SimHash")
@@ -412,7 +527,9 @@ func printCommands() {
 	fmt.Println("HLL_CREATE key p / HLL_DELETE key / HLL_ADD key element / HLL_COUNT key")
 	fmt.Println("SIMHASH_SAVE key text / SIMHASH_DIST key1 key2")
 	fmt.Println("------------------------------")
-	fmt.Println("HELP")
+	fmt.Println("HELP						 (prints all commands)")
 	fmt.Println("-------------------------------")
 	fmt.Println("EXIT or QUIT")
+	fmt.Println("-------------------------------")
+
 }

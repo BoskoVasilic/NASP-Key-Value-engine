@@ -51,7 +51,8 @@ func (tb *TokenBucket) CheckAvailability() bool {
 }
 
 func (tb *TokenBucket) GetBucketState() (int, int64) {
-	data, exists := GlobalMemtables.Get("ttoken_bucket", true)
+	data, exists, _ := GlobalMemtables.Get("ttoken_bucket", true)
+
 	if !exists {
 		return MAX_TOKENS, int64(RESET_INTERVAL)
 	}

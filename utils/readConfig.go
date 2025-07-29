@@ -23,7 +23,8 @@ type SSTableConfig struct {
 }
 
 type MemtableConfig struct {
-	StructureType string `json:"StructureType"`
+	StructureType string `json:"structureType"`
+
 	StructNum     int    `json:"structNum"`
 	InstanceCount int    `json:"instanceCount"`
 	MaxEntry      int    `json:"maxEntry"`
@@ -60,7 +61,8 @@ type Config struct {
 // This is used when the user config is invalid or missing
 var defaultConfig = Config{
 	WAL: WALConfig{
-		SegmentMaxBlocks: 10,
+		SegmentMaxBlocks: 5,
+
 	},
 	BlockManager: BlockManagerConfig{
 		BlockSizeKB:    8,
@@ -84,7 +86,8 @@ var defaultConfig = Config{
 		ParamNumber:   3,
 	},
 	TokenBucketRateLim: TokenBucketConfig{
-		Tokens:           10,
+		Tokens:           20,
+
 		ResetIntervalSec: 30,
 	},
 }
@@ -128,11 +131,13 @@ func ReadConfig(filePath string) *Config {
 	}
 
 	// Validate BlockManager
+
 	if userConfig.BlockManager.BlockSizeKB != 4 && userConfig.BlockManager.BlockSizeKB != 8 && userConfig.BlockManager.BlockSizeKB != 16 {
 		errs = append(errs, fmt.Sprintf("blockManager.blockSizeKB invalid (%d), defaulting to %d",
 			userConfig.BlockManager.BlockSizeKB, defaultConfig.BlockManager.BlockSizeKB))
 		userConfig.BlockManager.BlockSizeKB = defaultConfig.BlockManager.BlockSizeKB
 	}
+
 	if userConfig.BlockManager.CacheMaxBlocks <= 0 {
 		errs = append(errs, fmt.Sprintf("blockManager.cacheMaxBlocks invalid (%d), defaulting to %d",
 			userConfig.BlockManager.CacheMaxBlocks, defaultConfig.BlockManager.CacheMaxBlocks))

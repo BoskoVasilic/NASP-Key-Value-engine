@@ -222,6 +222,20 @@ func (bm *BlockManager) WriteToDisk(filePath string, blockNumber int, block []by
 }
 
 func (bm *BlockManager) OverwriteOnDisk(filePath string, offset int, data []byte) error {
+	block := bm.ReadBlockByOffset(filePath, offset)
+	blockNumber := offset / BLOCK_SIZE
+	inBlockOffset := offset % BLOCK_SIZE
+
+	copy(block[inBlockOffset:], data)
+
+	BlockCacheLock.Lock()
+	for i := 0; i < len(block); i += BLOCK_SIZE {
+		blockData := block[i : i+BLOCK_SIZE]
+		bm.cache.Put(filePath, uint32((blockNumber+i)*BLOCK_SIZE), blockData)
+	}
+	BlockCacheLock.Unlock()
+
+
 	BlockManagerLock.Lock()
 	file := openFile(filePath, os.O_RDWR)
 
@@ -234,6 +248,7 @@ func (bm *BlockManager) OverwriteOnDisk(filePath string, offset int, data []byte
 	if err != nil {
 		log.Fatal(err)
 	}
+
 	closeFile(file)
 	BlockManagerLock.Unlock()
 

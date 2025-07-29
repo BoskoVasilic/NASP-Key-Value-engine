@@ -23,7 +23,9 @@ func NewLSMTree(maxLevel int, BlockMenager *BlockManager) *LSMTree {
 		Levels:       make([]*[]*string, 0),
 		currentLevel: 0,
 		maxLevel:     maxLevel,
-		LevelsSize:   make([]int, maxLevel),
+
+		LevelsSize:   make([]int, maxLevel+1),
+
 		BlockMenager: BlockMenager,
 		// LevelsSize is a slice that keeps track of the size of each level in the LSM tree.
 		// It is initialized to a slice of integers with length equal to maxLevel, all set to zero.
@@ -42,6 +44,8 @@ func (lt *LSMTree) AddLevel(path string) {
 	lt.SerializeLSM(GlobalLSMTreeFile, lt.BlockMenager)
 }
 func (lt *LSMTree) Merge(first int, last int, level int, dictenery *GlobalDictionary, oneFile bool, summeryIndex uint64) string {
+	//fmt.Println("Merging files from level", level, "from", first, "to", last)
+
 	DataCompresedLists := make([]bool, 0)
 	MaxSizes := make([]int, 0)
 	OneFileLise := make([]bool, 0)
@@ -357,7 +361,8 @@ func (lt *LSMTree) StartMerging(configMergeFunction int, dictenery *GlobalDictio
 	i := 0
 	for i < len(lt.Levels) {
 		if lt.LevelsSize[i] > 0 {
-			if configMergeFunction == 0 {
+			if configMergeFunction == 1 {
+
 				first, last, levle, ok := lt.GetSizeTieredMerge(i, MergeSize)
 				if ok {
 					lt.Merge(first, last, levle, dictenery, oneFile, summeryIndex)
@@ -382,13 +387,9 @@ func (lt *LSMTree) StartMerging(configMergeFunction int, dictenery *GlobalDictio
 					for j := 0; j < len(levelForDelete); j++ {
 						RemoveSStabel(*levelForDelete[j], lt.BlockMenager)
 					}
-
+					lt.SerializeLSM(GlobalLSMTreeFile, lt.BlockMenager)
 					// Update the level with the new level without the merged files
 
-					j = 0
-					levelSerch := *lt.Levels[i]
-					for j < len(levelSerch) {
-					}
 				}
 			} else {
 				// Implement other merge strategies here
@@ -418,15 +419,15 @@ func (lt *LSMTree) StartMerging(configMergeFunction int, dictenery *GlobalDictio
 						RemoveSStabel(*levelForDelete[j], lt.BlockMenager)
 					}
 
-					levelSerch := *lt.Levels[i]
-					for j < len(levelSerch) {
-					}
+					lt.SerializeLSM(GlobalLSMTreeFile, lt.BlockMenager)
+
 				}
 			}
 
 		}
 		i++
 	}
+
 }
 func (lt *LSMTree) GetSizeTieredMerge(levle int, mergeSize int) (int, int, int, bool) {
 	if levle >= lt.maxLevel {
@@ -459,9 +460,12 @@ func (lt *LSMTree) GetLevelTieredMerge(level int, mergeSize int) (int, int, int,
 	path := *(*lt.Levels[level])[last]
 	FirstFKey, LastFKey := GetFirstAndLAstKeyCompresed(path, lt.BlockMenager)
 	last -= 1
+	//fmt.Println("Last key in level", level, "is", LastFKey, "First key is", FirstFKey)
 	for last >= 0 {
 		path := *(*lt.Levels[level])[last]
 		FirstSKey, LastSKey := GetFirstAndLAstKeyCompresed(path, lt.BlockMenager)
+		//fmt.Println("Last key in level", level, "is", LastSKey, "First key is", FirstSKey, "and last ", last)
+
 		if LastSKey >= FirstFKey || FirstSKey <= LastFKey {
 			return last, mergeSize - 1, level, true // Overlap detected in either order, ready for merging
 		}
@@ -535,7 +539,8 @@ func DeserializeLSM(path string, bm *BlockManager) *LSMTree {
 		path2 := path + "backup"
 
 		if _, err := os.Stat(path2); os.IsNotExist(err) {
-			return NewLSMTree(4, bm) //TODO make confing like that
+			return NewLSMTree(GlobalConfig.LSMTree.MaxLevel, bm)
+
 		} else {
 			os.Rename(path2, path)
 		}
@@ -566,6 +571,11 @@ func DeserializeLSM(path string, bm *BlockManager) *LSMTree {
 		}
 		tree.Levels = append(tree.Levels, &levelPaths)
 	}
+	tree.maxLevel = max(GlobalConfig.LSMTree.MaxLevel, int(maxLevel))
+	for len(tree.LevelsSize) < tree.maxLevel+1 {
+		tree.LevelsSize = append(tree.LevelsSize, 0)
+	}
+
 	return tree
 }
 
