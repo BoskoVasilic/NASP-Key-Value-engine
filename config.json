@@ -1,17 +1,17 @@
 {
   "wal": {
-    "segmentMaxBlocks": 2
+    "segmentMaxBlocks": 5
   },
   "memtable": {
-    "structureType": "hashmap",
-    "structNum": 3,
+    "structureType": "skiplist",
+    "structNum": 2,
     "instanceCount": 3,
     "maxEntry": 5
   },
   "sstable": {
-    "summarySampling": 1,
-    "separateFiles": false,
-    "compressionEnabled": false
+    "summarySampling": 3,
+    "separateFiles": true,
+    "compressionEnabled": true
   },
   "lsm-tree": {
     "algorithmType": 2, 

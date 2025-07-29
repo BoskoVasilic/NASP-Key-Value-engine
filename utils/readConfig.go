@@ -60,7 +60,7 @@ type Config struct {
 // This is used when the user config is invalid or missing
 var defaultConfig = Config{
 	WAL: WALConfig{
-		SegmentMaxBlocks: 10,
+		SegmentMaxBlocks: 5,
 	},
 	BlockManager: BlockManagerConfig{
 		BlockSizeKB:    8,
@@ -84,7 +84,7 @@ var defaultConfig = Config{
 		ParamNumber:   3,
 	},
 	TokenBucketRateLim: TokenBucketConfig{
-		Tokens:           10,
+		Tokens:           20,
 		ResetIntervalSec: 30,
 	},
 }
