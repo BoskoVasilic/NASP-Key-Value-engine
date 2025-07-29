@@ -100,6 +100,7 @@ func WriteToFilesCompresed[T any, H any](StartPath string, oneFile bool, BlockMa
 		file.WriteToFile(utils.Uint64ToBytes(uint64(len(lastkey))))
 		file.WriteToFile([]byte(lastkey))
 		// Write the Merkle tree data
+		file.FlushBuffer(false)
 		file.SetCurrentPosition(2)
 		file.OverwriteDataInFile(Heeder) // Overwrite the header with the offsets
 		file.FlushBuffer(false)          // Flush the buffer to write the header to the file
@@ -211,7 +212,7 @@ func WriteToFile[T any, H any](StartPath string, oneFile bool, BlockManager *Blo
 		Heeder = append(Heeder, utils.Uint64ToBytes(offsetStart+size)...)
 		Heeder = append(Heeder, utils.Uint64ToBytes(size+bloomFilterOffset+offsetStart)...)
 		Heeder = append(Heeder, utils.Uint64ToBytes(size+bloomFilterOffset+indexSummaryOffset+offsetStart)...)
-		Heeder = append(Heeder, utils.Uint64ToBytes(size+bloomFilterOffset+indexBlockOffset+indexSummaryOffset+offsetStart)...)
+		Heeder = append(Heeder, utils.Uint64ToBytes(size+bloomFilterOffset+indexBlockOffset+indexSummaryOffset+offsetStart)...)                  // Merkle tree offset
 		Heeder = append(Heeder, utils.Uint64ToBytes(size+bloomFilterOffset+indexBlockOffset+indexSummaryOffset+offsetStart+dataMerkleLength)...) //Need Merkle tree offset
 		//file.FlushBuffer(false)
 
@@ -220,9 +221,12 @@ func WriteToFile[T any, H any](StartPath string, oneFile bool, BlockManager *Blo
 		file.WriteToFile([]byte(firstKey))
 		file.WriteToFile(utils.Uint64ToBytes(uint64(len(lastkey))))
 		file.WriteToFile([]byte(lastkey))
+		file.FlushBuffer(false)
 		file.SetCurrentPosition(2)
 		file.OverwriteDataInFile(Heeder) // Overwrite the header with the offsets
 		file.FlushBuffer(false)
+		//fmt.Println("SSTable written to:", StartPath)
+		//fmt.Println("-------------------------------------------------------------------------")
 		return StartPath // Flush the buffer to write the header to the file
 		// Flush the buffer to write the header to the file
 	} else {
@@ -264,6 +268,7 @@ func WriteToFile[T any, H any](StartPath string, oneFile bool, BlockManager *Blo
 		indexBlock := make([]byte, 0)
 		_, EntryEnters := WriteDataBlock(fileData, data, &indexSummery, &indexBlock, Filter, SumeeryIndex, tree)
 		tree.build()
+		file.FlushBuffer(false)
 		file.SetCurrentPosition(2)
 		file.OverwriteDataInFile(utils.Uint64ToBytes(uint64(EntryEnters))) // Overwrite the number of entries in the header
 		fileData.FlushBuffer(false)
@@ -294,6 +299,7 @@ func WriteToFile[T any, H any](StartPath string, oneFile bool, BlockManager *Blo
 func WriteDataBlock[T any, H any](file *BlockManagerWrap, itter *utils.Iterator[T, H, *Entry], IndexSummery *[]byte, IndexBloc *[]byte,
 	Filter *BloomFilter, BlockSummery uint64, tree *MerkleTree) (uint64, uint64) {
 	// TODO: Implement the function logic here
+	//fmt.Println("Starting writing in file...")
 	entry, ok := itter.Next()
 	indexoffset := uint64(0)
 	indexTogo := 0
@@ -309,13 +315,14 @@ func WriteDataBlock[T any, H any](file *BlockManagerWrap, itter *utils.Iterator[
 	for true {
 		i += 1
 		if entry == nil {
-			continue
+			break
 		}
 
 		// Create an index entry
 
 		data := entry.toBytes()
 		tree.Put(data)
+		//fmt.Println("Writing data for key:", entry.GetKey(), "Data length:", len(data))
 		//fmt.Println(entry.GetKey(), "Data to write:", data)
 		Filter.Put([]byte(entry.GetKey())) // Add the key to the global dictionary TODO SOLVE THIS PROBLEM
 		file.WriteToFile(data)
@@ -1063,15 +1070,19 @@ func RemoveSStabel(path string, bm *BlockManager) {
 
 }
 func GetFirstAndLAstKeyCompresed(path string, bm *BlockManager) (string, string) {
+	//print("GetFirstAndLAstKeyCompresed called with path: ", path, "\n")
 	file := NewBlockManagerWrap(path, bm)
 	var file2 *BlockManagerWrap
 	// Check if the file exists
 	file.SetCurrentPosition(1) // Move to the second byte to check for compression
 	_, oneFile := file.ReadFromCurrentPosition(1)
-	file.MoveFromCurrentPosition(uvarMaxSize) // Skip the number of entries
+	file.MoveFromCurrentPosition(uvarMaxSize)
+	//fmt.Println("OneFile:", oneFile[0])
+	// Skip the number of entries
 	if oneFile[0] == 1 {
 		file.SetCurrentPosition(50)
 		_, merkleTreeOffset := file.ReadFromCurrentPosition(8)
+		//fmt.Println("Merkle Tree Offset:", int(utils.BytesToUint64(merkleTreeOffset)))
 		file.SetCurrentPosition(int(utils.BytesToUint64(merkleTreeOffset)))
 		file2 = file // Use the same file for reading first and last keys
 		// Data starts from header at position 58
@@ -1100,6 +1111,7 @@ func GetFirstAndLAstKeyCompresed(path string, bm *BlockManager) (string, string)
 		file2 = file // Use the same file for reading first and last keys
 
 	}
+	//fmt.Println("File2 current position:")
 	_, buffer := file2.ReadFromCurrentPosition(8)
 	firstKeySize := utils.BytesToUint64(buffer)
 	_, firstKeyBytes := file.ReadFromCurrentPosition(int(firstKeySize))

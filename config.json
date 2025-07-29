@@ -9,7 +9,7 @@
     "maxEntry": 5
   },
   "sstable": {
-    "summarySampling": 3,
+    "summarySampling": 5,
     "separateFiles": true,
     "compressionEnabled": true
   },
