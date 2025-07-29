@@ -2,7 +2,6 @@ package structures
 
 import (
 	"KVengine/utils"
-	"fmt"
 )
 
 type Memtables struct {
@@ -84,12 +83,12 @@ func (mt *Memtables) getActive() Storage {
 	return mt.tables[mt.activeIndex]
 }
 
-func (mt *Memtables) Put(key string, value []byte, privilege ...bool) {
+func (mt *Memtables) Put(key string, value []byte, privilege ...bool) bool{
 	if !(len(privilege) > 0 && privilege[0]) {
 		available := GlobalTokenBucket.CheckAvailability()
 		if !available {
-			fmt.Println("Access limit exceeded!")
-			return
+			// fmt.Println("Access limit exceeded!")
+			return false
 		}
 	}
 	mt.getActive().Put(key, value)
@@ -98,7 +97,9 @@ func (mt *Memtables) Put(key string, value []byte, privilege ...bool) {
 	WalLock.Unlock()
 	AddItmsString(GlobalD, key)
 	GlobalCache.Update(key, Entry{value: value, key: key})
-	mt.shiftIfFull()
+	mt.shiftIfFull()	
+	return true
+
 }
 
 func (mt *Memtables) PutWithoutWal(key string, value []byte) {
@@ -108,12 +109,12 @@ func (mt *Memtables) PutWithoutWal(key string, value []byte) {
 	mt.shiftIfFull()
 }
 
-func (mt *Memtables) Get(key string, privilege ...bool) ([]byte, bool) {
+func (mt *Memtables) Get(key string, privilege ...bool) ([]byte, bool, bool) {
 	if !(len(privilege) > 0 && privilege[0]) {
 		available := GlobalTokenBucket.CheckAvailability()
 		if !available {
-			fmt.Println("Access limit exceeded!")
-			return nil, false
+			// fmt.Println("Access limit exceeded!")
+			return nil, false, true
 		}
 	}
 	for i := 0; i < mt.n; i++ {
@@ -121,18 +122,18 @@ func (mt *Memtables) Get(key string, privilege ...bool) ([]byte, bool) {
 		value, found := mt.tables[ind].Get(key)
 		if found {
 			if !value.deleted {
-				return value.value, true
+				return value.value, true, false
 			} else {
-				return nil, false
+				return nil, false, false
 			}
 		}
 	}
 	value, found := GlobalCache.Get(key)
 	if found {
 		if !value.deleted {
-			return value.value, true
+			return value.value, true, false
 		} else {
-			return nil, false
+			return nil, false, false
 		}
 	}
 
@@ -140,21 +141,21 @@ func (mt *Memtables) Get(key string, privilege ...bool) ([]byte, bool) {
 	if found {
 		GlobalCache.Put(key, *valPtr)
 		if !valPtr.deleted {
-			return valPtr.value, true
+			return valPtr.value, true, false
 		} else {
-			return nil, false
+			return nil, false, false
 		}
 	}
 
-	return nil, false
+	return nil, false, false
 }
 
-func (mt *Memtables) Delete(key string, privilege ...bool) {
+func (mt *Memtables) Delete(key string, privilege ...bool) (bool){
 	if !(len(privilege) > 0 && privilege[0]) {
 		available := GlobalTokenBucket.CheckAvailability()
 		if !available {
-			fmt.Println("Access limit exceeded!")
-			return
+			// fmt.Println("Access limit exceeded!")
+			return false
 		}
 	}
 	mt.getActive().Delete(key)
@@ -164,6 +165,7 @@ func (mt *Memtables) Delete(key string, privilege ...bool) {
 	AddItmsString(GlobalD, key)
 	GlobalCache.Delete(key)
 	mt.shiftIfFull()
+	return true
 }
 
 func (mt *Memtables) shiftIfFull() {

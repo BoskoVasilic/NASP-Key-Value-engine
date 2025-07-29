@@ -1,17 +1,17 @@
 {
   "wal": {
-    "segmentMaxBlocks": 5
+    "segmentMaxBlocks": 2
   },
   "memtable": {
-    "structureType": "skiplist",
+    "structureType": "hashmap",
     "structNum": 3,
     "instanceCount": 3,
-    "maxEntry": 2
+    "maxEntry": 5
   },
   "sstable": {
     "summarySampling": 1,
-    "separateFiles": true,
-    "compressionEnabled": true
+    "separateFiles": false,
+    "compressionEnabled": false
   },
   "lsm-tree": {
     "algorithmType": 2, 
@@ -22,11 +22,11 @@
     "maxEntries": 5         
   },
   "blockManager": {
-    "blockSizeKB": 8,            
-    "cacheMaxBlocks": 1024       
+    "blockSizeKB": 4,            
+    "cacheMaxBlocks": 512       
   },
   "tokenBucketRateLimit": {
-    "tokens": 100,
-    "resetIntervalSec": 10
+    "tokens": 10,
+    "resetIntervalSec": 40
   }
 }

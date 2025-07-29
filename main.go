@@ -16,7 +16,9 @@ func initGlobals() {
 	structures.GlobalLsm = structures.DeserializeLSM(structures.GlobalLSMTreeFile, structures.GlobalBM)
 	structures.GlobalMemtables = structures.NewMemtables(structures.GlobalConfig.Memtable.InstanceCount, structures.GlobalConfig.Memtable.MaxEntry)
 	structures.GlobalTokenBucket = structures.NewTokenBucket()
-	structures.GlobalTokenBucket.Initialize()
+	structures.GlobalTokenBucket.Initialize()	
+	structures.GlobalMemtables.Init()
+
 }
 
 func loadFromWal() {
@@ -34,7 +36,6 @@ func loadFromWal() {
 func main() {
 	initGlobals()
 	loadFromWal()
-	structures.GlobalMemtables.Init()
 	cli.Run()
 	structures.GlobalMemtables.Destroy()
 }

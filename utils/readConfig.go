@@ -133,6 +133,7 @@ func ReadConfig(filePath string) *Config {
 			userConfig.BlockManager.BlockSizeKB, defaultConfig.BlockManager.BlockSizeKB))
 		userConfig.BlockManager.BlockSizeKB = defaultConfig.BlockManager.BlockSizeKB
 	}
+
 	if userConfig.BlockManager.CacheMaxBlocks <= 0 {
 		errs = append(errs, fmt.Sprintf("blockManager.cacheMaxBlocks invalid (%d), defaulting to %d",
 			userConfig.BlockManager.CacheMaxBlocks, defaultConfig.BlockManager.CacheMaxBlocks))

@@ -23,7 +23,7 @@ func RangeScan(first, last string, PageNumber, NumberOffEntytyinPage int, dictio
 		if !ok {
 			return
 		}
-		_, ok = GlobalMemtables.Get(Value.GetKey(), true)
+		_, ok, _ = GlobalMemtables.Get(Value.GetKey(), true)
 		if !ok {
 			i--
 		}
@@ -34,7 +34,7 @@ func RangeScan(first, last string, PageNumber, NumberOffEntytyinPage int, dictio
 			return
 		}
 		key := entry.GetKey()
-		data, ok := GlobalMemtables.Get(key, true)
+		data, ok, _ := GlobalMemtables.Get(key, true)
 		if !ok {
 			i--
 		}
@@ -67,7 +67,7 @@ func RangeItterator(first, last string, dictionary *GlobalDictionary, bm *BlockM
 		fmt.Println("No entries")
 		return
 	}
-	data, ok := GlobalMemtables.Get(entry.GetKey())
+	data, ok, _ := GlobalMemtables.Get(entry.GetKey())
 	var addeed string
 	for !ok {
 		entry, ok = itter.Next()
@@ -75,7 +75,7 @@ func RangeItterator(first, last string, dictionary *GlobalDictionary, bm *BlockM
 			fmt.Println("No more entries")
 			return
 		}
-		data, ok = GlobalMemtables.Get(entry.GetKey(), true)
+		data, ok, _ = GlobalMemtables.Get(entry.GetKey(), true)
 	}
 	for {
 		fmt.Println("Key:", entry.GetKey()[1:], "Value:", string(data))
@@ -84,14 +84,14 @@ func RangeItterator(first, last string, dictionary *GlobalDictionary, bm *BlockM
 			fmt.Println("No more entries")
 			break
 		}
-		data, ok = GlobalMemtables.Get(entry.GetKey())
+		data, ok, _ = GlobalMemtables.Get(entry.GetKey())
 		for !ok {
 			entry, ok = itter.Next()
 			if !ok {
 				fmt.Println("No more entries")
 				return
 			}
-			data, ok = GlobalMemtables.Get(entry.GetKey(), true)
+			data, ok, _ = GlobalMemtables.Get(entry.GetKey(), true)
 		}
 		for {
 			fmt.Print("[ITERATOR]> ")
