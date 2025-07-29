@@ -226,7 +226,7 @@ func (bm *BlockManager) OverwriteOnDisk(filePath string, offset int, data []byte
 	blockNumber := offset / BLOCK_SIZE
 	inBlockOffset := offset % BLOCK_SIZE
 
-	copy(block[inBlockOffset:], data[:len(data)%BLOCK_SIZE])
+	copy(block[inBlockOffset:], data)
 
 	BlockCacheLock.Lock()
 	for i := 0; i < len(block); i += BLOCK_SIZE {
