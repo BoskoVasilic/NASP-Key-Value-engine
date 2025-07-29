@@ -36,6 +36,7 @@ func loadFromWal() {
 func main() {
 	initGlobals()
 	loadFromWal()
+
 	cli.Run()
 	structures.GlobalMemtables.Destroy()
 }

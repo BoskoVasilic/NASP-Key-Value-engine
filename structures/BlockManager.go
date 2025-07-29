@@ -235,6 +235,7 @@ func (bm *BlockManager) OverwriteOnDisk(filePath string, offset int, data []byte
 	}
 	BlockCacheLock.Unlock()
 
+
 	BlockManagerLock.Lock()
 	file := openFile(filePath, os.O_RDWR)
 

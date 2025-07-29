@@ -24,6 +24,7 @@ type SSTableConfig struct {
 
 type MemtableConfig struct {
 	StructureType string `json:"structureType"`
+
 	StructNum     int    `json:"structNum"`
 	InstanceCount int    `json:"instanceCount"`
 	MaxEntry      int    `json:"maxEntry"`
@@ -61,6 +62,7 @@ type Config struct {
 var defaultConfig = Config{
 	WAL: WALConfig{
 		SegmentMaxBlocks: 5,
+
 	},
 	BlockManager: BlockManagerConfig{
 		BlockSizeKB:    8,
@@ -85,6 +87,7 @@ var defaultConfig = Config{
 	},
 	TokenBucketRateLim: TokenBucketConfig{
 		Tokens:           20,
+
 		ResetIntervalSec: 30,
 	},
 }

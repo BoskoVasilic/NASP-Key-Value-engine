@@ -18,6 +18,7 @@ import (
 var BLOCK_USABLE_SPACE int
 var SEGMENT_SIZE int
 
+
 const (
 	CRC_SIZE        = 4
 	TIMESTAMP_SIZE  = 8
@@ -32,6 +33,7 @@ const (
 	KEY_SIZE_START   = TOMBSTONE_START + TOMBSTONE_SIZE
 	VALUE_SIZE_START = KEY_SIZE_START + KEY_SIZE_SIZE
 	KEY_START        = VALUE_SIZE_START + VALUE_SIZE_SIZE
+
 
 	RECORD_TYPE_SIZE    = 1
 	PAYLOAD_SIZE        = 2
@@ -125,6 +127,7 @@ func NewWriteAheadLogElement(key []byte, value []byte, tombstone bool) *WriteAhe
 
 func NewWriteAheadLog(blockManager *BlockManager) *WriteAheadLog {
 	BLOCK_USABLE_SPACE = BLOCK_SIZE - RECORD_TYPE_SIZE - PAYLOAD_SIZE
+
 	return &WriteAheadLog{
 		segmentPaths:  make([]*WriteAheadLogSegment, 0),
 		lastSegment:   nil,
@@ -142,6 +145,7 @@ func NewWriteAheadLog(blockManager *BlockManager) *WriteAheadLog {
 
 func NewWriteAheadLogSegment(logNumber int, segmentPath WriteAheadLogPaths, blockManager *BlockManager) *WriteAheadLogSegment {
 	SEGMENT_SIZE = GlobalConfig.WAL.SegmentMaxBlocks * BLOCK_SIZE
+
 	return &WriteAheadLogSegment{
 		logNumber:         logNumber,
 		segmentPath:       segmentPath,
@@ -283,6 +287,7 @@ func (s *WriteAheadLogSegment) InitSegmentHeader() {
 		log.Fatal(err.Error())
 	}
 	if t.HasBirthTime() {
+
 		createdTime := make([]byte, 8)
 		binary.LittleEndian.PutUint64(createdTime, uint64(t.BirthTime().Unix()))
 		segmentHeader = append(segmentHeader, createdTime...)
@@ -302,6 +307,7 @@ func (wal *WriteAheadLog) WriteToFile(key []byte, value []byte, tombstone bool) 
 	if wal.lastSegment.segmentBlocksLeft == SEGMENT_SIZE/BLOCK_SIZE {
 		wal.lastSegment.segmentBlocksLeft--
 	}
+
 	if len(data)+RECORD_TYPE_SIZE+PAYLOAD_SIZE > BLOCK_SIZE-wal.lastSegment.blockManagerWrap.currentBufferUsedSpace {
 		allBlocksToWrite := make([]byte, 0)
 		if len(data) > BLOCK_USABLE_SPACE {
@@ -356,6 +362,7 @@ func (wal *WriteAheadLog) WriteToFile(key []byte, value []byte, tombstone bool) 
 						break
 					}
 				}
+
 			} else {
 				wal.lastSegment.blockManagerWrap.WriteToFile(allBlocksToWrite)
 				wal.lastSegment.segmentBlocksLeft -= int(numBlocks)
@@ -455,6 +462,7 @@ func (wal *WriteAheadLog) GetCurrentStatus() WriteStatus {
 	status := WriteStatus{
 		filePath: wal.lastSegment.blockManagerWrap.filePath,
 		offset:   wal.lastSegment.blockManagerWrap.GetLastWrittenByteOffset(),
+
 	}
 	return status
 }
@@ -553,6 +561,7 @@ func (wal *WriteAheadLog) SetStatus(status WriteStatus) {
 		for i := 1; i < index; i++ {
 			previousSegmentPath := wal.segmentPaths[index-i]
 			offset, _ := wal.ReadSegmentHeader(previousSegmentPath)
+
 			if offset != SEGMENT_SIZE+1 {
 				previousSegmentPath.blockManagerWrap.SetCurrentPosition(SEGMENT_HEADER_SIZE - SEGMENT_OFFSET)
 				offsetBytesPrevious := make([]byte, 4)

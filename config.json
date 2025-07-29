@@ -12,6 +12,7 @@
     "summarySampling": 5,
     "separateFiles": true,
     "compressionEnabled": true
+
   },
   "lsm-tree": {
     "algorithmType": 2, 
@@ -28,5 +29,6 @@
   "tokenBucketRateLimit": {
     "tokens": 10,
     "resetIntervalSec": 40
+
   }
 }

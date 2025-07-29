@@ -2,6 +2,7 @@ package structures
 
 import (
 	"KVengine/utils"
+
 )
 
 type Memtables struct {
@@ -89,6 +90,7 @@ func (mt *Memtables) Put(key string, value []byte, privilege ...bool) bool{
 		if !available {
 			// fmt.Println("Access limit exceeded!")
 			return false
+
 		}
 	}
 	mt.getActive().Put(key, value)
@@ -99,6 +101,7 @@ func (mt *Memtables) Put(key string, value []byte, privilege ...bool) bool{
 	GlobalCache.Update(key, Entry{value: value, key: key})
 	mt.shiftIfFull()	
 	return true
+
 
 }
 
@@ -115,6 +118,7 @@ func (mt *Memtables) Get(key string, privilege ...bool) ([]byte, bool, bool) {
 		if !available {
 			// fmt.Println("Access limit exceeded!")
 			return nil, false, true
+
 		}
 	}
 	for i := 0; i < mt.n; i++ {
@@ -125,6 +129,7 @@ func (mt *Memtables) Get(key string, privilege ...bool) ([]byte, bool, bool) {
 				return value.value, true, false
 			} else {
 				return nil, false, false
+
 			}
 		}
 	}
@@ -134,6 +139,7 @@ func (mt *Memtables) Get(key string, privilege ...bool) ([]byte, bool, bool) {
 			return value.value, true, false
 		} else {
 			return nil, false, false
+
 		}
 	}
 
@@ -156,6 +162,7 @@ func (mt *Memtables) Delete(key string, privilege ...bool) (bool){
 		if !available {
 			// fmt.Println("Access limit exceeded!")
 			return false
+
 		}
 	}
 	mt.getActive().Delete(key)
@@ -166,6 +173,7 @@ func (mt *Memtables) Delete(key string, privilege ...bool) (bool){
 	GlobalCache.Delete(key)
 	mt.shiftIfFull()
 	return true
+
 }
 
 func (mt *Memtables) shiftIfFull() {

@@ -12,11 +12,13 @@ func RangeScan(first, last string, PageNumber, NumberOffEntytyinPage int, dictio
 		Kada dobijem niz kljuceva poziva se funkcija Get iz GlobalMemtables
 		koja vraca vrednost za dati kljuc.
 	*/
+
 	available := GlobalTokenBucket.CheckAvailability()
 	if !available {
 		fmt.Println("Access limit exceeded!")
 		return
 	}
+
 	itter := dictionary.SkipList.RangeScan(first, last)
 	for i := 0; i < (PageNumber-1)*NumberOffEntytyinPage; i++ {
 		Value, ok := itter.Next()
@@ -24,6 +26,7 @@ func RangeScan(first, last string, PageNumber, NumberOffEntytyinPage int, dictio
 			return
 		}
 		_, ok, _ = GlobalMemtables.Get(Value.GetKey(), true)
+
 		if !ok {
 			i--
 		}
@@ -35,6 +38,7 @@ func RangeScan(first, last string, PageNumber, NumberOffEntytyinPage int, dictio
 		}
 		key := entry.GetKey()
 		data, ok, _ := GlobalMemtables.Get(key, true)
+
 		if !ok {
 			i--
 		}
@@ -61,6 +65,7 @@ func RangeItterator(first, last string, dictionary *GlobalDictionary, bm *BlockM
 		U trenutku kada dobavljanje novog kljuca nije moguce zavrsa ve se iteracija
 		Vrednosti se dobavljaju iz GlobalMemtables i ispisuju se na konzoli.
 	*/
+
 	itter := dictionary.SkipList.RangeScan(first, last)
 	entry, ok := itter.Next()
 	if !ok {
@@ -68,6 +73,7 @@ func RangeItterator(first, last string, dictionary *GlobalDictionary, bm *BlockM
 		return
 	}
 	data, ok, _ := GlobalMemtables.Get(entry.GetKey())
+
 	var addeed string
 	for !ok {
 		entry, ok = itter.Next()
@@ -76,6 +82,7 @@ func RangeItterator(first, last string, dictionary *GlobalDictionary, bm *BlockM
 			return
 		}
 		data, ok, _ = GlobalMemtables.Get(entry.GetKey(), true)
+
 	}
 	for {
 		fmt.Println("Key:", entry.GetKey()[1:], "Value:", string(data))
@@ -85,6 +92,7 @@ func RangeItterator(first, last string, dictionary *GlobalDictionary, bm *BlockM
 			break
 		}
 		data, ok, _ = GlobalMemtables.Get(entry.GetKey())
+
 		for !ok {
 			entry, ok = itter.Next()
 			if !ok {
@@ -112,6 +120,7 @@ func PrefixItterator(prefix string, dictionary *GlobalDictionary, bm *BlockManag
 		Svodi se na range itterator samo sto koristi prefix koji je first element a
 		last element se dobija tako sto se doda 1 na zadnji deo u stringu.
 	*/
+
 	first := prefix
 	last := incrementLastRune(prefix)
 	RangeItterator(first, last, dictionary, bm)

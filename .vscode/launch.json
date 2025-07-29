@@ -11,5 +11,6 @@
       "program": "${workspaceFolder}",
       "showLog": true,
       "console": "integratedTerminal"
+
     }]
 }

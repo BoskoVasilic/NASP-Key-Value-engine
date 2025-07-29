@@ -56,6 +56,7 @@ func Run() {
 				continue
 			}
 
+
 		// GET command expects at least 1 part: key and then retrieves the value from the engine
 		case "GET":
 			if len(parts) < 2 {
@@ -64,11 +65,13 @@ func Run() {
 			}
 			key := parts[1]
 			fmt.Println("[GET]", key)
+
 			val, found, deniedAccess := structures.GlobalMemtables.Get("d" + key)
 			if deniedAccess {
 				fmt.Println("Get operation failed because of denied access at this time.")
 				continue
 			}
+
 			if !found {
 				fmt.Println("Key not found in database.")
 				continue
@@ -91,6 +94,7 @@ func Run() {
 			}
 			// WAL operation for DELETE
 			fmt.Println("Key deleted:", key)
+
 
 		case "PREFIX_SCAN":
 			if len(parts) < 4 {
@@ -175,11 +179,13 @@ func Run() {
 				continue
 			}
 			bloomFilter := structures.NewBloomFilterWithParams(expectedInsertions, falsePositiveRate)
+
 			success := structures.GlobalMemtables.Put("b"+parts[1], bloomFilter.SerializeBloomF())
 			if !success {
 				fmt.Println("BloomFilter not created because of denied access at the moment.")
 				continue
 			}
+
 
 		case "BF_DELETE":
 			if len(parts) < 2 {
@@ -188,11 +194,13 @@ func Run() {
 			}
 			fmt.Println("[BloomFilter Delete]", parts[1])
 
+
 			isDeleted := structures.GlobalMemtables.Delete("b" + parts[1])
 			if !isDeleted {
 				fmt.Println("BloomFilter not deleted because of denied access at the moment.")
 				continue
 			}
+
 
 		case "BF_PUT":
 			if len(parts) < 3 {
@@ -201,15 +209,18 @@ func Run() {
 			}
 			fmt.Println("[BloomFilter Put]", parts[1], parts[2])
 
+
 			bloomFilterData, found, deniedAccess := structures.GlobalMemtables.Get("b" + parts[1])
 			if deniedAccess {
 				fmt.Println("Access denied at the moment.")
 				continue
 			}
+
 			if !found {
 				fmt.Println("BloomFilter not found")
 				continue
 			}
+
 			
 			bloomFilter := structures.DeserializeBloomF(bloomFilterData)
 			bloomFilter.Put([]byte(parts[2]))
@@ -219,6 +230,7 @@ func Run() {
 				continue
 			}
 
+
 		case "BF_CHECK":
 			if len(parts) < 3 {
 				fmt.Println("Usage: BF_CHECK key element")
@@ -226,11 +238,13 @@ func Run() {
 			}
 			fmt.Println("[BloomFilter Check]", parts[1], parts[2])
 
+
 			bloomFilterData, found, deniedAccess := structures.GlobalMemtables.Get("b" + parts[1])
 			if deniedAccess {
 				fmt.Println("Access denied at the moment.")
 				continue
 			}
+
 			if !found {
 				fmt.Println("BloomFilter not found")
 				continue
@@ -263,6 +277,8 @@ func Run() {
 				fmt.Println("CountMinSketch not created because of denied access at the moment.")
 				continue
 			}
+
+
 
 		case "CMS_DELETE":
 			if len(parts) < 2 {
@@ -342,6 +358,7 @@ func Run() {
 				continue
 			}
 
+
 		case "HLL_DELETE":
 			if len(parts) < 2 {
 				fmt.Println("Usage: HLL_DELETE key")
@@ -354,6 +371,7 @@ func Run() {
 				continue
 			}
 
+
 		case "HLL_ADD":
 			if len(parts) < 3 {
 				fmt.Println("Usage: HLL_ADD key element")
@@ -365,6 +383,7 @@ func Run() {
 				fmt.Println("Access denied at the moment.")
 				continue
 			}
+
 			if !found {
 				fmt.Println("HyperLogLog not found")
 				continue
@@ -376,6 +395,7 @@ func Run() {
 				fmt.Println("Element not added to HyperLogLog because it is full or access denied at the moment.")
 				continue
 			}
+
 
 		case "HLL_COUNT":
 			if len(parts) < 2 {
@@ -389,6 +409,7 @@ func Run() {
 				fmt.Println("Access denied at the moment.")
 				continue
 			}
+
 			if !found {
 				fmt.Println("HyperLogLog not found")
 				continue
@@ -415,6 +436,7 @@ func Run() {
 				continue
 			}
 
+
 		case "SIMHASH_DIST":
 			if len(parts) < 3 {
 				fmt.Println("Usage: SIMHASH_DIST key1 key2")
@@ -435,6 +457,7 @@ func Run() {
 			}
 			if deniedAccess1 || deniedAccess2 {
 				fmt.Println("Access denied at the moment for one or both get operations of SimHashes.")
+
 				continue
 			}
 			dist := structures.CalculateHammingDistance(hash1, hash2)
@@ -459,6 +482,7 @@ func Run() {
 				continue
 			}
 			ok, ind := structures.GlobalLsm.ValidateTable(level, index)
+
 			if ok {
 				fmt.Printf("Storage at level %d, index %d is valid.\n", level, index)
 			} else {
@@ -479,6 +503,7 @@ func Run() {
 // the extra parentheses are aligned and used to make commands more understandable
 func printCommands() {
 	fmt.Println("-------------------------------")
+
 	fmt.Println("Available commands:")
 	fmt.Println("PUT key value")
 	fmt.Println("GET key")
@@ -493,6 +518,7 @@ func printCommands() {
 	fmt.Println("------------------------------")
 	fmt.Println("STORAGE_LOCATIONS 				(prints storage locations)")
 	fmt.Println("STORAGE_VALIDATE level index 			(validates storage for level and index)")
+
 	fmt.Println("------------------------------")
 	fmt.Println("Work with Probabilistic Structures:")
 	fmt.Println("BF=BloomFilter, CMS=CountMinSketch, HLL=HyperLogLog, SIMHASH=SimHash")
