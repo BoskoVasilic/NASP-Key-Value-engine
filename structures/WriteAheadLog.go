@@ -18,7 +18,6 @@ import (
 var BLOCK_USABLE_SPACE int
 var SEGMENT_SIZE int
 
-
 const (
 	CRC_SIZE        = 4
 	TIMESTAMP_SIZE  = 8
@@ -33,7 +32,6 @@ const (
 	KEY_SIZE_START   = TOMBSTONE_START + TOMBSTONE_SIZE
 	VALUE_SIZE_START = KEY_SIZE_START + KEY_SIZE_SIZE
 	KEY_START        = VALUE_SIZE_START + VALUE_SIZE_SIZE
-
 
 	RECORD_TYPE_SIZE    = 1
 	PAYLOAD_SIZE        = 2
@@ -462,7 +460,6 @@ func (wal *WriteAheadLog) GetCurrentStatus() WriteStatus {
 	status := WriteStatus{
 		filePath: wal.lastSegment.blockManagerWrap.filePath,
 		offset:   wal.lastSegment.blockManagerWrap.GetLastWrittenByteOffset(),
-
 	}
 	return status
 }
@@ -543,6 +540,7 @@ func (wal *WriteAheadLog) SetStatus(status WriteStatus) {
 	blockManagerWrap.SetCurrentPosition(SEGMENT_HEADER_SIZE - SEGMENT_OFFSET)
 	offsetBytes := make([]byte, 4)
 	binary.LittleEndian.PutUint32(offsetBytes, uint32(status.offset))
+	blockManagerWrap.FlushBuffer(false)
 	blockManagerWrap.OverwriteDataInFile(offsetBytes)
 
 	found := false
@@ -566,6 +564,7 @@ func (wal *WriteAheadLog) SetStatus(status WriteStatus) {
 				previousSegmentPath.blockManagerWrap.SetCurrentPosition(SEGMENT_HEADER_SIZE - SEGMENT_OFFSET)
 				offsetBytesPrevious := make([]byte, 4)
 				binary.LittleEndian.PutUint32(offsetBytesPrevious, uint32(SEGMENT_SIZE+1))
+				previousSegmentPath.blockManagerWrap.FlushBuffer(false)
 				previousSegmentPath.blockManagerWrap.OverwriteDataInFile(offsetBytesPrevious)
 			} else {
 				break
