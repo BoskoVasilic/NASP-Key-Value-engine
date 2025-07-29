@@ -128,6 +128,7 @@ func ReadConfig(filePath string) *Config {
 	}
 
 	// Validate BlockManager
+
 	if userConfig.BlockManager.BlockSizeKB != 4 && userConfig.BlockManager.BlockSizeKB != 8 && userConfig.BlockManager.BlockSizeKB != 16 {
 		errs = append(errs, fmt.Sprintf("blockManager.blockSizeKB invalid (%d), defaulting to %d",
 			userConfig.BlockManager.BlockSizeKB, defaultConfig.BlockManager.BlockSizeKB))

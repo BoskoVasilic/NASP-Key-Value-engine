@@ -9,9 +9,9 @@
     "maxEntry": 5
   },
   "sstable": {
-    "summarySampling": 1,
+    "summarySampling": 5,
     "separateFiles": false,
-    "compressionEnabled": false
+    "compressionEnabled": true
   },
   "lsm-tree": {
     "algorithmType": 2, 
