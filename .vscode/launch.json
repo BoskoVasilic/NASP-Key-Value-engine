@@ -9,5 +9,7 @@
       "request": "launch",
       "mode": "debug",
       "program": "${workspaceFolder}",
+      "showLog": true,
+      "console": "integratedTerminal"
     }]
 }
