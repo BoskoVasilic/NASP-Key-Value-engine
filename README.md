@@ -62,6 +62,26 @@ The project includes several indexing and probabilistic data structures, such as
 ### 6. Access control and rate limiting
 The implementation also includes token bucket based rate limiting to control access frequency and protect the system from excessive demand. This makes the engine more robust in a realistic deployment scenario.
 
+## Write and read paths
+
+The following diagrams summarize how data moves through the engine during write and read operations. This is the most natural place to show the lifecycle after the architectural overview, before listing specific features and project structure.
+
+### Write path
+
+<p align="center">
+  <img src="docs/write_path.png" alt="Write path diagram" width="700" />
+</p>
+
+During a write, data is first stored in the in-memory memtable and then persisted through the WAL and SSTable flush process. This enables fast ingestion while preserving durability and recovery.
+
+### Read path
+
+<p align="center">
+  <img src="docs/read_path.png" alt="Read path diagram" width="700" />
+</p>
+
+During a read, the engine first checks the memtable, then cache, then bloom filter, and finally the SSTable summary/index and data files. This layered access pattern reduces the cost of disk reads while keeping lookup latency low.
+
 ## Features
 
 - Key-value write, read, and delete operations
